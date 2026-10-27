@@ -32,6 +32,11 @@ using namespace NSPmodel;
 using namespace NSPforcefield;
 using namespace NSPgeometry;
 
+struct PairEnergyMetadata {
+	string chain;
+	string residue;
+};
+
 class BRTreeInfo {
 public:
 	int seqLen;
@@ -235,6 +240,10 @@ public:
 
 
 	double totalEnergy(double breakCTWT, double connectWT,double clashWT, double shift, bool verbose);
+	double totalEnergy(double breakCTWT, double connectWT,double clashWT, double shift, bool verbose, ostream* componentOutput);
+	double totalEnergy(double breakCTWT, double connectWT, double clashWT, double shift, bool verbose,
+		ostream* pairOutput, ostream* nonpairOutput,
+		const vector<PairEnergyMetadata>& residueMetadata, const vector<string>& contactTypes, bool pdbOwnership = true);
 
 	void printDetailEnergy();
 
@@ -398,9 +407,11 @@ inline double baseBaseClashTmp(BRNode* nodeA, BRNode* nodeB, int sep, EnergyTabl
 	return clashEnergy;
 }
 
-inline double getBaseRiboseEnergy(BRNode* nodeA, BRNode* nodeB, int sep, EnergyTable* et, bool verbose){
+inline double getBaseRiboseEnergy(BRNode* nodeA, BRNode* nodeB, int sep, EnergyTable* et, bool verbose, double* oxygenOutput = NULL, double* clashOutput = NULL){
 	double baseOxyEnergy = 0.0;
 	double clashEnergy = 0.0;
+	if(oxygenOutput != NULL) *oxygenOutput = 0.0;
+	if(clashOutput != NULL) *clashOutput = 0.0;
 	int i,j;
 	double dd;
 	if(squareDistance(nodeA->baseAtomCoords[0], nodeB->riboAtomCoords[2]) < 144.0){
@@ -421,6 +432,8 @@ inline double getBaseRiboseEnergy(BRNode* nodeA, BRNode* nodeB, int sep, EnergyT
 		cout << "base oxy: " << baseOxyEnergy << endl;
 		cout << "clash: " << clashEnergy << endl;
 	}
+	if(oxygenOutput != NULL) *oxygenOutput = baseOxyEnergy*et->para.wtBaseOxygen;
+	if(clashOutput != NULL) *clashOutput = clashEnergy;
 	return baseOxyEnergy*et->para.wtBaseOxygen + clashEnergy;
 }
 
@@ -452,7 +465,9 @@ inline double getBaseRiboseEnergyTmp(BRNode* nodeA, BRNode* nodeB, int sep, Ener
 	return baseOxyEnergy*et->para.wtBaseOxygen + clashEnergy;
 }
 
-inline double getBasePhoEnergy(BRNode* nodeA, BRNode* nodeB, int sep, EnergyTable* et, bool verbose){
+inline double getBasePhoEnergy(BRNode* nodeA, BRNode* nodeB, int sep, EnergyTable* et, bool verbose, double* oxygenOutput = NULL, double* clashOutput = NULL){
+	if(oxygenOutput != NULL) *oxygenOutput = 0.0;
+	if(clashOutput != NULL) *clashOutput = 0.0;
 	if(!nodeB->connectToNeighbor) return 0;
 	double baseOxyEnergy = 0.0;
 	double clashEnergy = 0.0;
@@ -477,6 +492,8 @@ inline double getBasePhoEnergy(BRNode* nodeA, BRNode* nodeB, int sep, EnergyTabl
 		cout << "base oxy: " << baseOxyEnergy << endl;
 		cout << "clash: " << clashEnergy << endl;
 	}
+	if(oxygenOutput != NULL) *oxygenOutput = baseOxyEnergy*et->para.wtBaseOxygen;
+	if(clashOutput != NULL) *clashOutput = clashEnergy;
 	return baseOxyEnergy*et->para.wtBaseOxygen + clashEnergy;
 
 }
@@ -507,14 +524,16 @@ inline double getBasePhoEnergyTmp(BRNode* nodeA, BRNode* nodeB, int sep, EnergyT
 	return baseOxyEnergy*et->para.wtBaseOxygen + clashEnergy;
 }
 
-inline double getRiboseRiboseEnergy(BRNode* nodeA, BRNode* nodeB, int sep, EnergyTable* et, bool verbose){
+inline double getRiboseRiboseEnergy(BRNode* nodeA, BRNode* nodeB, int sep, EnergyTable* et, bool verbose, double* oxygenOutput = NULL, double* clashOutput = NULL){
 	if(nodeA->seqID > nodeB->seqID){
-		return getRiboseRiboseEnergy(nodeB, nodeA, -sep, et, verbose);
+		return getRiboseRiboseEnergy(nodeB, nodeA, -sep, et, verbose, oxygenOutput, clashOutput);
 	}
 	int i,j;
 	double clashEnergy = 0;
 	double hbondEnergy = 0;
 	double dd;
+	if(oxygenOutput != NULL) *oxygenOutput = 0.0;
+	if(clashOutput != NULL) *clashOutput = 0.0;
 	if(squareDistance(nodeA->riboAtomCoords[2], nodeB->riboAtomCoords[2]) < 81.0) {
 
 		if(abs(sep) >= 2)
@@ -535,6 +554,8 @@ inline double getRiboseRiboseEnergy(BRNode* nodeA, BRNode* nodeB, int sep, Energ
 			}
 		}
 	}
+	if(oxygenOutput != NULL) *oxygenOutput = hbondEnergy;
+	if(clashOutput != NULL) *clashOutput = clashEnergy;
 	return clashEnergy + hbondEnergy;
 }
 
@@ -563,7 +584,9 @@ inline double getRiboseRiboseEnergyTmp(BRNode* nodeA, BRNode* nodeB, int sep, En
 	return clashEnergy + hbondEnergy;
 }
 
-inline double getRibosePhoEnergy(BRNode* nodeA, BRNode* nodeB, int sep, EnergyTable* et, bool verbose){
+inline double getRibosePhoEnergy(BRNode* nodeA, BRNode* nodeB, int sep, EnergyTable* et, bool verbose, double* oxygenOutput = NULL, double* clashOutput = NULL){
+	if(oxygenOutput != NULL) *oxygenOutput = 0.0;
+	if(clashOutput != NULL) *clashOutput = 0.0;
 	if(sep == 0 || sep == -1) return 0;
 	if(!nodeB->connectToNeighbor) return 0;
 	int i,j;
@@ -582,6 +605,8 @@ inline double getRibosePhoEnergy(BRNode* nodeA, BRNode* nodeB, int sep, EnergyTa
 				clashEnergy += et->atET->getRibosePhoEnergy(i,j,dd, sep);
 		}
 	}
+	if(oxygenOutput != NULL) *oxygenOutput = hbondEnergy;
+	if(clashOutput != NULL) *clashOutput = clashEnergy;
 	return clashEnergy + hbondEnergy;
 }
 
@@ -607,12 +632,13 @@ inline double getRibosePhoEnergyTmp(BRNode* nodeA, BRNode* nodeB, int sep, Energ
 }
 
 
-inline double getPhoPhoEnergy(BRNode* nodeA, BRNode* nodeB, int sep, EnergyTable* et, bool verbose){
+inline double getPhoPhoEnergy(BRNode* nodeA, BRNode* nodeB, int sep, EnergyTable* et, bool verbose, double* clashOutput = NULL){
+	if(clashOutput != NULL) *clashOutput = 0.0;
 
 	if(!nodeA->connectToNeighbor || !nodeB->connectToNeighbor) return 0;
 
 	if(nodeA->seqID > nodeB->seqID){
-		return getPhoPhoEnergy(nodeB, nodeA, -sep, et, verbose);
+		return getPhoPhoEnergy(nodeB, nodeA, -sep, et, verbose, clashOutput);
 	}
 	if(squareDistance(nodeA->pho.tList[0], nodeB->pho.tList[0]) > 36.0) return 0.0;
 
@@ -626,6 +652,7 @@ inline double getPhoPhoEnergy(BRNode* nodeA, BRNode* nodeB, int sep, EnergyTable
 				clashEnergy += et->atET->getPhoPhoEnergy(i,j,dd,sep);
 		}
 	}
+	if(clashOutput != NULL) *clashOutput = clashEnergy;
 	return clashEnergy;
 }
 

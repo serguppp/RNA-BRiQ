@@ -6,6 +6,9 @@
  */
 
 #include <pred/BRFoldingTree.h>
+#include <iomanip>
+#include <sstream>
+#include <stdexcept>
 
 namespace NSPpred {
 
@@ -5902,8 +5905,15 @@ pair<double,double> BRFoldingTree::baseRotamerMutEnergy(BRNode* node, double bre
 }
 
 double BRFoldingTree::totalEnergy(double breakCTWT, double connectWT, double clashWT, double shift, bool verbose){
+	return totalEnergy(breakCTWT, connectWT, clashWT, shift, verbose, NULL);
+}
+
+double BRFoldingTree::totalEnergy(double breakCTWT, double connectWT, double clashWT, double shift, bool verbose, ostream* componentOutput){
 	double tot = 0;
 	int i,j;
+
+	if(componentOutput != NULL)
+		*componentOutput << setprecision(17) << "residue_i\tresidue_j\tcomponent\tenergy\n";
 
 	//base-base, ribose-ribose, pho-pho
 	for(i=0;i<seqLen;i++){
@@ -5911,10 +5921,20 @@ double BRFoldingTree::totalEnergy(double breakCTWT, double connectWT, double cla
 		for(j=i+1;j<seqLen;j++){
 			BRNode* nodeB = nodes[j];
 			int sep = sepTable[i*seqLen+j];
-			tot += getBaseBaseEnergy(nodeA, nodeB, sep, et, verbose);
-			tot += baseBaseClash(nodeA, nodeB, sep, et, shift, verbose)*clashWT;
-			tot += getRiboseRiboseEnergy(nodeA, nodeB, sep, et, verbose)*clashWT;
-			tot += getPhoPhoEnergy(nodeA, nodeB, sep, et, verbose)*clashWT;
+			double baseBase = getBaseBaseEnergy(nodeA, nodeB, sep, et, verbose);
+			double baseClash = baseBaseClash(nodeA, nodeB, sep, et, shift, verbose)*clashWT;
+			double riboseClash = getRiboseRiboseEnergy(nodeA, nodeB, sep, et, verbose)*clashWT;
+			double phosphateClash = getPhoPhoEnergy(nodeA, nodeB, sep, et, verbose)*clashWT;
+			tot += baseBase;
+			tot += baseClash;
+			tot += riboseClash;
+			tot += phosphateClash;
+			if(componentOutput != NULL){
+				*componentOutput << i+1 << "\t" << j+1 << "\tbase_base\t" << baseBase << "\n";
+				*componentOutput << i+1 << "\t" << j+1 << "\tbase_clash\t" << baseClash << "\n";
+				*componentOutput << i+1 << "\t" << j+1 << "\tribose_clash\t" << riboseClash << "\n";
+				*componentOutput << i+1 << "\t" << j+1 << "\tphosphate_clash\t" << phosphateClash << "\n";
+			}
 		}
 	}
 
@@ -5925,9 +5945,17 @@ double BRFoldingTree::totalEnergy(double breakCTWT, double connectWT, double cla
 		for(j=0;j<seqLen;j++){
 			BRNode* nodeB = nodes[j];
 			int sep = sepTable[i*seqLen+j];
-			tot += getBaseRiboseEnergy(nodeA, nodeB, sep, et, verbose)*clashWT;
-			tot += getBasePhoEnergy(nodeA, nodeB, sep,  et, verbose)*clashWT;
-			tot += getRibosePhoEnergy(nodeA, nodeB, sep, et, verbose)*clashWT;
+			double baseRibose = getBaseRiboseEnergy(nodeA, nodeB, sep, et, verbose)*clashWT;
+			double basePhosphate = getBasePhoEnergy(nodeA, nodeB, sep, et, verbose)*clashWT;
+			double ribosePhosphate = getRibosePhoEnergy(nodeA, nodeB, sep, et, verbose)*clashWT;
+			tot += baseRibose;
+			tot += basePhosphate;
+			tot += ribosePhosphate;
+			if(componentOutput != NULL){
+				*componentOutput << i+1 << "\t" << j+1 << "\tbase_ribose\t" << baseRibose << "\n";
+				*componentOutput << i+1 << "\t" << j+1 << "\tbase_phosphate\t" << basePhosphate << "\n";
+				*componentOutput << i+1 << "\t" << j+1 << "\tribose_phosphate\t" << ribosePhosphate << "\n";
+			}
 		}
 	}
 
@@ -5935,19 +5963,188 @@ double BRFoldingTree::totalEnergy(double breakCTWT, double connectWT, double cla
 		if(verbose){
 			cout << "rotEnergy: " << i << " " << nodes[i]->rot->energy << endl;
 		}
-		tot += nodes[i]->rot->energy;
+		double rotamerEnergy = nodes[i]->rot->energy;
+		tot += rotamerEnergy;
+		if(componentOutput != NULL)
+			*componentOutput << i+1 << "\t" << i+1 << "\trotamer\t" << rotamerEnergy << "\n";
 	}
 
 	for(int i=0;i<seqLen;i++){
 		if(verbose){
 			cout << "phoEnergy: " << i << " " <<  nodes[i]->pho.e << endl;
 		}
-		if(chainBreakPoints[i])
-			tot += nodes[i]->pho.e * breakCTWT;
-		else
-			tot += nodes[i]->pho.e * connectWT;
+		double phosphateEnergy = chainBreakPoints[i]
+			? nodes[i]->pho.e * breakCTWT
+			: nodes[i]->pho.e * connectWT;
+		tot += phosphateEnergy;
+		if(componentOutput != NULL)
+			*componentOutput << i+1 << "\t" << i+1 << "\tphosphate_local\t" << phosphateEnergy << "\n";
 	}
 	return tot;
+}
+
+static string csvField(const string& value){
+	string result = "\"";
+	for(size_t i=0;i<value.size();i++){
+		if(value[i] == '"') result += "\"\"";
+		else result += value[i];
+	}
+	result += "\"";
+	return result;
+}
+
+double BRFoldingTree::totalEnergy(double breakCTWT, double connectWT, double clashWT, double shift, bool verbose,
+		ostream* pairOutput, ostream* nonpairOutput,
+		const vector<PairEnergyMetadata>& residueMetadata, const vector<string>& contactTypes, bool pdbOwnership){
+	if((pairOutput != NULL || nonpairOutput != NULL) &&
+		(residueMetadata.size() != (size_t)seqLen || contactTypes.size() != (size_t)seqLen*(size_t)seqLen)){
+		throw invalid_argument("BRiQ energy export metadata does not match the input sequence length");
+	}
+
+	struct EnergyParts {
+		double baseBase;
+		double baseOxygen;
+		double otherOxygen;
+		double clash;
+		EnergyParts(): baseBase(0.0), baseOxygen(0.0), otherOxygen(0.0), clash(0.0) {}
+	};
+	struct LocalParts {
+		double baseRibose;
+		double basePhosphate;
+		double ribosePhosphate;
+		double rotamer;
+		double phosphate;
+		LocalParts(): baseRibose(0.0), basePhosphate(0.0), ribosePhosphate(0.0), rotamer(0.0), phosphate(0.0) {}
+	};
+
+	double total = 0.0;
+	vector<EnergyParts> pairs((size_t)seqLen*(size_t)seqLen);
+	vector<LocalParts> local((size_t)seqLen);
+
+	// BRiQ node i stores the outgoing phosphate, written to PDB residue i+1.
+	// Remap atom ownership only; the original helper calls/score are unchanged.
+	auto phosphateOwner = [&](int node) {
+		if(!pdbOwnership) return node;
+		return nodes[node]->connectToNeighbor && node+1 < seqLen ? node+1 : -1;
+	};
+	auto addInteraction = [&](int first, int second, double bo, double oo, double clash, int localKind) {
+		if(first < 0 || second < 0) {
+			if(bo != 0.0 || oo != 0.0 || clash != 0.0)
+				throw logic_error("Nonzero interaction assigned to an absent phosphate");
+			return;
+		}
+		if(first == second) {
+			double energy = bo + oo + clash;
+			if(localKind == 0) local[first].baseRibose += energy;
+			else if(localKind == 1) local[first].basePhosphate += energy;
+			else if(localKind == 2) local[first].ribosePhosphate += energy;
+			else throw logic_error("Unexpected intra-residue phosphate-phosphate term");
+			return;
+		}
+		if(first > second) std::swap(first, second);
+		EnergyParts& target = pairs[(size_t)first*seqLen+second];
+		target.baseOxygen += bo;
+		target.otherOxygen += oo;
+		target.clash += clash;
+	};
+
+	if(pairOutput != NULL)
+		*pairOutput << "chain_i,residue_i,chain_j,residue_j,sep,contact_type,E_bb,E_bo,E_oo,E_clash,E_pair\n";
+	if(nonpairOutput != NULL)
+		*nonpairOutput << "chain,residue,E_base_ribose,E_base_phosphate,E_ribose_phosphate,E_rotamer,E_phosphate_local,E_nonpair\n";
+
+	for(int i=0;i<seqLen;i++){
+		BRNode* nodeA = nodes[i];
+		for(int j=i+1;j<seqLen;j++){
+			BRNode* nodeB = nodes[j];
+			int sep = sepTable[i*seqLen+j];
+			double baseBase = getBaseBaseEnergy(nodeA, nodeB, sep, et, verbose);
+			double baseClashRaw = baseBaseClash(nodeA, nodeB, sep, et, shift, verbose);
+			double rrOxygenRaw = 0.0, rrClashRaw = 0.0;
+			double ppClashRaw = 0.0;
+			double riboseRibose = getRiboseRiboseEnergy(nodeA, nodeB, sep, et, verbose, &rrOxygenRaw, &rrClashRaw);
+			double phosphateClash = getPhoPhoEnergy(nodeA, nodeB, sep, et, verbose, &ppClashRaw);
+
+			total += baseBase;
+			total += baseClashRaw*clashWT;
+			total += riboseRibose*clashWT;
+			total += phosphateClash*clashWT;
+
+			EnergyParts& parts = pairs[(size_t)i*seqLen+j];
+			parts.baseBase += baseBase;
+			parts.otherOxygen += rrOxygenRaw*clashWT;
+			parts.clash += (baseClashRaw + rrClashRaw)*clashWT;
+			addInteraction(phosphateOwner(i), phosphateOwner(j), 0.0, 0.0, ppClashRaw*clashWT, 3);
+		}
+	}
+
+	for(int i=0;i<seqLen;i++){
+		BRNode* nodeA = nodes[i];
+		for(int j=0;j<seqLen;j++){
+			BRNode* nodeB = nodes[j];
+			int sep = sepTable[i*seqLen+j];
+			double brOxygenRaw = 0.0, brClashRaw = 0.0;
+			double bpOxygenRaw = 0.0, bpClashRaw = 0.0;
+			double rpOxygenRaw = 0.0, rpClashRaw = 0.0;
+			double baseRibose = getBaseRiboseEnergy(nodeA, nodeB, sep, et, verbose, &brOxygenRaw, &brClashRaw);
+			double basePhosphate = getBasePhoEnergy(nodeA, nodeB, sep, et, verbose, &bpOxygenRaw, &bpClashRaw);
+			double ribosePhosphate = getRibosePhoEnergy(nodeA, nodeB, sep, et, verbose, &rpOxygenRaw, &rpClashRaw);
+			total += baseRibose*clashWT;
+			total += basePhosphate*clashWT;
+			total += ribosePhosphate*clashWT;
+
+			addInteraction(i, j, brOxygenRaw*clashWT, 0.0, brClashRaw*clashWT, 0);
+			addInteraction(i, phosphateOwner(j), bpOxygenRaw*clashWT, 0.0, bpClashRaw*clashWT, 1);
+			addInteraction(i, phosphateOwner(j), 0.0, rpOxygenRaw*clashWT, rpClashRaw*clashWT, 2);
+		}
+	}
+
+	for(int i=0;i<seqLen;i++){
+		if(verbose)
+			cout << "rotEnergy: " << i << " " << nodes[i]->rot->energy << endl;
+		local[i].rotamer = nodes[i]->rot->energy;
+		total += local[i].rotamer;
+	}
+
+	for(int i=0;i<seqLen;i++){
+		if(verbose)
+			cout << "phoEnergy: " << i << " " << nodes[i]->pho.e << endl;
+		local[i].phosphate = chainBreakPoints[i]
+			? nodes[i]->pho.e * breakCTWT
+			: nodes[i]->pho.e * connectWT;
+		total += local[i].phosphate;
+	}
+
+	if(pairOutput != NULL){
+		for(int i=0;i<seqLen;i++){
+			for(int j=i+1;j<seqLen;j++){
+				const EnergyParts& parts = pairs[(size_t)i*seqLen+j];
+				double pairTotal = parts.baseBase + parts.baseOxygen + parts.otherOxygen + parts.clash;
+				int sep = sepTable[i*seqLen+j];
+				ostringstream sepText;
+				if(sep == 3) sepText << "long";
+				else sepText << sep;
+				*pairOutput << csvField(residueMetadata[i].chain) << "," << csvField(residueMetadata[i].residue)
+					<< "," << csvField(residueMetadata[j].chain) << "," << csvField(residueMetadata[j].residue)
+					<< "," << sepText.str()
+					<< "," << csvField(contactTypes[(size_t)i*seqLen+j])
+					<< "," << setprecision(17) << parts.baseBase << "," << parts.baseOxygen << ","
+					<< parts.otherOxygen << "," << parts.clash << "," << pairTotal << "\n";
+			}
+		}
+	}
+
+	if(nonpairOutput != NULL){
+		for(int i=0;i<seqLen;i++){
+			const LocalParts& parts = local[i];
+			double nonpairTotal = parts.baseRibose + parts.basePhosphate + parts.ribosePhosphate + parts.rotamer + parts.phosphate;
+			*nonpairOutput << csvField(residueMetadata[i].chain) << "," << csvField(residueMetadata[i].residue)
+				<< "," << setprecision(17) << parts.baseRibose << "," << parts.basePhosphate << ","
+				<< parts.ribosePhosphate << "," << parts.rotamer << "," << parts.phosphate << "," << nonpairTotal << "\n";
+		}
+	}
+
+	return total;
 }
 
 void BRFoldingTree::printDetailEnergy(){
