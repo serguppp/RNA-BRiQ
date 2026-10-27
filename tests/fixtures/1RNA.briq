@@ -1,0 +1,5 @@
+pdb 1RNA.pdb
+seq UUAUAUAUAUAUAAUUAUAUAUAUAUAA
+sec (((((((((((((())))))))))))))
+nwc ............................
+break 13

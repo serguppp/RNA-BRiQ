@@ -11,3 +11,6 @@ CTestTestfile.cmake
 _deps
 bin/
 lib/
+__pycache__/
+*.py[cod]
+.ruff_cache/
