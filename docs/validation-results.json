@@ -1,0 +1,323 @@
+{
+  "reference_commit": "2684f6e6b2526bfbe4ca9ac31773f496384d0b4d",
+  "tolerance": 1e-09,
+  "candidate_image": "briq:validated",
+  "cases": {
+    "1RNA": {
+      "pair_count": 378,
+      "nonpair_count": 28,
+      "reconstructed": -28.606109849613702,
+      "reconstruction_error": 1.7763568394002505e-14,
+      "max_pair_component_error": 0.0,
+      "max_nonpair_component_error": 0.0,
+      "directional_components": {
+        "record_count": 3920,
+        "max_error": 0.0
+      },
+      "original_global": -28.606109849613684,
+      "exported_global": -28.606109849613684,
+      "global_error": 0.0,
+      "representatives": {
+        "stacking": {
+          "chain_i": "A",
+          "residue_i": "1",
+          "chain_j": "A",
+          "residue_j": "2",
+          "sep": "1",
+          "contact_type": "stacking;base_ribose",
+          "E_bb": "-0.87947599097674267",
+          "E_bo": "0",
+          "E_oo": "0",
+          "E_clash": "0",
+          "E_pair": "-0.87947599097674267"
+        },
+        "base_pair": {
+          "chain_i": "A",
+          "residue_i": "1",
+          "chain_j": "B",
+          "residue_j": "28",
+          "sep": "long",
+          "contact_type": "base_pair;base_contact",
+          "E_bb": "-2.9151526362090809",
+          "E_bo": "0",
+          "E_oo": "0",
+          "E_clash": "0",
+          "E_pair": "-2.9151526362090809"
+        },
+        "positive_clash": {
+          "chain_i": "A",
+          "residue_i": "5",
+          "chain_j": "A",
+          "residue_j": "6",
+          "sep": "1",
+          "contact_type": "stacking;base_ribose",
+          "E_bb": "-2.2162197916796518",
+          "E_bo": "0",
+          "E_oo": "0",
+          "E_clash": "0.00029253475788455194",
+          "E_pair": "-2.2159272569217672"
+        },
+        "spatially_separated": {
+          "chain_i": "A",
+          "residue_i": "1",
+          "chain_j": "A",
+          "residue_j": "6",
+          "sep": "long",
+          "contact_type": "unannotated",
+          "E_bb": "0",
+          "E_bo": "0",
+          "E_oo": "0",
+          "E_clash": "0",
+          "E_pair": "0",
+          "minimum_heavy_atom_distance": 14.83332363295563
+        }
+      },
+      "source_sha256": "a6bbc4f9768643cb01a1b52cefdb3bc2138910c3eef8ae0c27e8f9fd1b4ce906",
+      "oxygen_query_reasons": {
+        "separation_exclusion": 180,
+        "outside_grid": 2236,
+        "zero_table_entry": 224
+      },
+      "hbond_query_reasons": {
+        "O2O2": {
+          "separation_or_outer_cutoff": 378
+        },
+        "O2OP": {
+          "separation_exclusion": 122,
+          "distance_cutoff": 606
+        }
+      },
+      "parameters": {
+        "base_oxygen_weight": 1.2,
+        "clash_weight": 1
+      },
+      "nonzero_columns": {
+        "E_bb": 59,
+        "E_bo": 0,
+        "E_oo": 0,
+        "E_clash": 9
+      },
+      "node_ownership": {
+        "pair_count": 378,
+        "nonpair_count": 28,
+        "reconstructed": -28.606109849613702,
+        "reconstruction_error": 1.7763568394002505e-14,
+        "max_pair_component_error": 0.0,
+        "max_nonpair_component_error": 0.0
+      },
+      "reassigned_pair_count": 0,
+      "weighted": {
+        "pair_count": 378,
+        "nonpair_count": 28,
+        "reconstructed": -9.51211987333464,
+        "reconstruction_error": 3.375077994860476e-14,
+        "max_pair_component_error": 0.0,
+        "max_nonpair_component_error": 0.0,
+        "seed": 0
+      },
+      "renumbering_and_insertion_codes": "passed",
+      "fixed_local_baselines": 4,
+      "default_and_seeded_repeat_bytes_identical": true,
+      "annotated_zero_energy_pairs": 1
+    },
+    "1EHZ": {
+      "pair_count": 2850,
+      "nonpair_count": 76,
+      "reconstructed": -133.66638013285734,
+      "reconstruction_error": 1.1368683772161603e-13,
+      "max_pair_component_error": 4.440892098500626e-16,
+      "max_nonpair_component_error": 0.0,
+      "directional_components": {
+        "record_count": 28880,
+        "max_error": 0.0
+      },
+      "original_global": -133.66638013285746,
+      "exported_global": -133.66638013285746,
+      "global_error": 0.0,
+      "representatives": {
+        "stacking": {
+          "chain_i": "A",
+          "residue_i": "1",
+          "chain_j": "A",
+          "residue_j": "2",
+          "sep": "1",
+          "contact_type": "stacking;base_ribose",
+          "E_bb": "-2.7862799739010358",
+          "E_bo": "0",
+          "E_oo": "0",
+          "E_clash": "0",
+          "E_pair": "-2.7862799739010358"
+        },
+        "base_pair": {
+          "chain_i": "A",
+          "residue_i": "1",
+          "chain_j": "A",
+          "residue_j": "72",
+          "sep": "long",
+          "contact_type": "base_pair;base_contact",
+          "E_bb": "-6.8111034314913699",
+          "E_bo": "0",
+          "E_oo": "0",
+          "E_clash": "0",
+          "E_pair": "-6.8111034314913699"
+        },
+        "non_watson_crick_pair": {
+          "chain_i": "A",
+          "residue_i": "8",
+          "chain_j": "A",
+          "residue_j": "14",
+          "sep": "long",
+          "contact_type": "non_watson_crick_pair;base_contact;base_phosphate",
+          "E_bb": "-3.2694080333241438",
+          "E_bo": "-0.020400000000000001",
+          "E_oo": "0",
+          "E_clash": "0",
+          "E_pair": "-3.2898080333241437"
+        },
+        "positive_clash": {
+          "chain_i": "A",
+          "residue_i": "7",
+          "chain_j": "A",
+          "residue_j": "49",
+          "sep": "long",
+          "contact_type": "base_contact;base_ribose",
+          "E_bb": "0",
+          "E_bo": "-0.29519999999999996",
+          "E_oo": "0.4700000000000002",
+          "E_clash": "2.6251826009960548e-05",
+          "E_pair": "0.17482625182601019"
+        },
+        "spatially_separated": {
+          "chain_i": "A",
+          "residue_i": "1",
+          "chain_j": "A",
+          "residue_j": "6",
+          "sep": "long",
+          "contact_type": "unannotated",
+          "E_bb": "0",
+          "E_bo": "0",
+          "E_oo": "0",
+          "E_clash": "0",
+          "E_pair": "0",
+          "minimum_heavy_atom_distance": 13.22420791578838
+        }
+      },
+      "source_sha256": "3a43aefed0b6d5d8b4be47c44470e61258d0e90b5ff608f132a2c9731c9df41f",
+      "oxygen_query_reasons": {
+        "separation_exclusion": 524,
+        "outside_grid": 17222,
+        "zero_table_entry": 831,
+        "nonzero": 57,
+        "angular_rejection": 2
+      },
+      "hbond_query_reasons": {
+        "O2O2": {
+          "separation_or_outer_cutoff": 2833,
+          "distance_cutoff": 16,
+          "nonzero": 1
+        },
+        "O2OP": {
+          "separation_exclusion": 371,
+          "distance_cutoff": 5327,
+          "nonzero": 2
+        }
+      },
+      "parameters": {
+        "base_oxygen_weight": 1.2,
+        "clash_weight": 1
+      },
+      "nonzero_columns": {
+        "E_bb": 119,
+        "E_bo": 36,
+        "E_oo": 3,
+        "E_clash": 22
+      },
+      "node_ownership": {
+        "pair_count": 2850,
+        "nonpair_count": 76,
+        "reconstructed": -133.66638013285734,
+        "reconstruction_error": 1.1368683772161603e-13,
+        "max_pair_component_error": 4.440892098500626e-16,
+        "max_nonpair_component_error": 0.0
+      },
+      "reassigned_pair_count": 44,
+      "weighted": {
+        "pair_count": 2850,
+        "nonpair_count": 76,
+        "reconstructed": -118.78543566813352,
+        "reconstruction_error": 0.0,
+        "max_pair_component_error": 4.440892098500626e-16,
+        "max_nonpair_component_error": 0.0,
+        "seed": 0
+      },
+      "fixed_local_baselines": 6,
+      "default_and_seeded_repeat_bytes_identical": true,
+      "annotated_zero_energy_pairs": 33
+    }
+  },
+  "status": "passed",
+  "validation_date": "2026-10-23",
+  "reference_image": "briq:validation-original",
+  "image_ids": {
+    "briq:validated": "sha256:b115baa4c05ed6da344e230b3866d44a55cebb997db10e8a73448c96a06f750b",
+    "briq:validation-original": "sha256:df7e9f97a0f611b788bc3781b4a29caec4e6423b14e966565621d0b03ae16123",
+    "briq:validation-copilot": "sha256:cbe5ec8c4956d6d4b196da65eac504ec155f5b92800aa5c8e1665ff7f2ad4087",
+    "briq:tzok": "sha256:df15c1389a7fa6a882d842965fc6d111e3c180fe904242829c9abb714a89dd21"
+  },
+  "candidate_source_sha256": {
+    "exec/RunEnergy.cpp": "044722ea6c3d26d06245c9e3e29d368b5623c7d088648c97b64d0ec71036d617",
+    "pred/BRFoldingTree.h": "34948c294a24d111e1c0dec7187ea0e5c137a1e1275ef34d19236d2b7bf19ba7",
+    "pred/src/BRFoldingTree.cpp": "2f9bc937b6e03bec366351a7399eca17e026fa4be333832e1c3e1c5c56d3d167"
+  },
+  "test_source_sha256": {
+    "tests/energy_oracle.cpp": "be61dc8f429f6ad9a1d1df5c2a81c22a3e6ec4aa326be84a2598d25f77623291",
+    "tests/test_pair_energy_validation.py": "6464c9b2c2366daa61af34a65b8be9fdc2ce54c3511269fb3f0634509cf289de",
+    "tests/test_pair_energy_export.py": "c51d67711cfd1a96dc2c89be90d6e776941ab6fe4019ebbaa733c96fb96fcf78"
+  },
+  "potential_parameter_and_geometry_sources_modified": false,
+  "upstream_source_comparison": {
+    "pred/BRFoldingTree.h": {
+      "matches_upstream_main": true,
+      "original_sha256": "e614d44da98094b4211d24984d167abfcc2aceecf5636adcc94cc53f51411305"
+    },
+    "pred/src/BRFoldingTree.cpp": {
+      "matches_upstream_main": true,
+      "original_sha256": "6a47da231476c1b1a6eedcc44470db3627d34e22c670f085b8cbfdc0b4afe1cf"
+    },
+    "para/Parameter.h": {
+      "matches_upstream_main": true,
+      "original_sha256": "752da3b57c75fcce4c85dccc1569b868bce51ca5f71e47b9c2ca81bd2226488b"
+    },
+    "forcefield/RiboseOxygenEnergyTable.h": {
+      "matches_upstream_main": true,
+      "original_sha256": "5b19bf743a3b8afd2c19cc203147996c9cfb672074ba693d5d88a9a67217beb9"
+    }
+  },
+  "chain_boundary_regression": {
+    "validated": "passed",
+    "copilot": "A chain-ID boundary was treated as a covalent link"
+  },
+  "copilot_regression": {
+    "image": "briq:validation-copilot",
+    "global": -133.66638013285746,
+    "old_node_grouping_matches_original": {
+      "pair_count": 2850,
+      "nonpair_count": 76,
+      "reconstructed": -133.66638013285734,
+      "reconstruction_error": 1.1368683772161603e-13,
+      "max_pair_component_error": 4.440892098500626e-16,
+      "max_nonpair_component_error": 0.0
+    },
+    "expected_regression_failures": {
+      "fixed_local": "1EHZ fixed local ('A', '8', 'A', '14'): -3.2694080333241438 != -3.2898080333241437",
+      "pdb_ownership": "pdb pair ('A', '7') ('A', '48') E_oo: 0.4700000000000002 != 0"
+    }
+  },
+  "other_checks": {
+    "legacy_export_two_chain_integration": "passed",
+    "ruff_lint_and_format": "passed",
+    "git_diff_whitespace": "passed",
+    "invalid_seed_and_ownership_options": "passed"
+  },
+  "artifact_storage": "Generated logs and energy exports were retained locally and are not included in this repository."
+}

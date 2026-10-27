@@ -101,6 +101,87 @@ BRiQ_Predict $INPUT $OUTPDB $RANDOMSEED
 
 Where `$INPUT` is the input file, `$OUTPDB` is the output structure, and `$RANDOMSEED` is the random seed.
 
+### Energy evaluation and pairwise components
+
+Prepare the input format used by `BRiQ_Energy` directly from a PDB file:
+
+```
+BRiQ_Energy --prepare input.pdb input.briq
+```
+
+Calculate the global energy as before. To export one row per unordered residue
+pair and a separate per-residue file for all remaining terms:
+
+```
+BRiQ_Energy input.briq --pair-energies pairs.csv
+```
+
+The command also writes `pairs.csv.nonpair.csv` unless a separate path is
+given with `--nonpair`. The pair CSV columns are
+`chain_i,residue_i,chain_j,residue_j,sep,contact_type,E_bb,E_bo,E_oo,E_clash,E_pair`.
+`sep` is BRiQ's existing sequence-separation class (`0`, `1`, `2`, or `long`).
+`contact_type` is determined independently of energy: WC/non-WC assignments
+come from `AssignRNASS`; stacking requires adjacent connected residues with
+base-normal angle <=30 degrees, plane distance <=4.0 A and base-center distance
+<=8.0 A; base-ribose and base-phosphate labels use heavy-atom distances <=4.0 A.
+`base_contact` uses a base-atom distance <=4.5 A. `unannotated` means none of
+these explicit rules matched; it does not assert that the energy is zero or
+that no physical contact exists.
+
+The default `--pair-ownership pdb` assigns outgoing phosphate atoms to their
+PDB owner (the next residue), matching BRiQ's own PDB writer. Earlier exports
+grouped them by their storage node instead. Use `--pair-ownership node` to
+reproduce that grouping; the CSV schema remains unchanged. In PDB mode `sep`
+describes the reported endpoint residues, not necessarily the original node
+separation used for each phosphate subterm.
+
+`E_bb` is the six-dimensional base-base term; `E_bo` sums weighted base-ribose
+and base-phosphate oxygen-table terms; `E_oo` sums ribose-ribose and
+ribose-phosphate hydrogen-bond terms; `E_clash` sums the BRiQ atom-clash terms
+from all pair interaction helpers. `E_pair` is the sum of these four columns.
+The nonpair CSV has separate columns for same-residue base-ribose,
+base-phosphate and ribose-phosphate terms, rotamer energy, and local phosphate
+energy. Thus `sum(E_pair) + sum(E_nonpair)` reproduces the global score.
+Local phosphate energy depends on an adjacent-ribose link and is anchored at
+its upstream node for bookkeeping; it is not a physically one-body term.
+
+Weights keep the existing defaults and can be set explicitly for comparison:
+
+```
+BRiQ_Energy input.briq --pair-energies pairs.csv --weights 0.5 1.25 0.75 --seed 0
+```
+
+The three values are the existing break, connect and clash weights. Original
+BRiQ randomly selects loop closure flags; use `--seed` to make unequal
+break/connect weighting repeatable. These flags are distinct from physical
+input `break` positions. The default seed remains time-based.
+The one-argument invocation and raw `--components COMPONENTS.tsv` output remain supported. Verify
+the export, including weighted and two-chain cases, with:
+
+```
+python3 tests/test_pair_energy_export.py build/bin/BRiQ_Energy path/to/1EHZ.pdb
+```
+
+For a Docker-built image, run the same checks from the host with:
+
+```
+python3 tests/test_pair_energy_export.py --docker briq:tzok path/to/1EHZ.pdb
+```
+
+For independent validation of every local component against a separately
+compiled, unmodified BRiQ reference, build an image from the current checkout
+and run:
+
+```
+python tests/test_pair_energy_validation.py --docker briq:validated --build-reference
+```
+
+This uses the bundled 1RNA/1EHZ fixtures and absolute tolerance `1e-9`. It
+retains logs, original directional helper outputs and all CSVs in the printed
+artifact directory. On Windows, generated inputs use LF because the original
+parser does not strip CRLF line endings. See the [validation report](docs/pair-energy-validation.md)
+for term definitions, ownership conventions, results and limitations.
+
 ### Demonstrations
 
 * [demo/refinement/](demo/refinement/): RNA structure refinement.
