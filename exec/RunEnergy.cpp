@@ -20,6 +20,13 @@
 #include <sstream>
 #include <set>
 #include <vector>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#ifndef BRIQ_SOURCE_VERSION
+#define BRIQ_SOURCE_VERSION "unknown"
+#endif
 
 using namespace NSPpred;
 using namespace std;
@@ -207,6 +214,9 @@ void printHelp() {
           " [--weights BREAK CONNECT CLASH] [--pair-ownership pdb|node]"
           " [--seed SEED]" << endl;
   cout << "       BRiQ_Energy --prepare INPUT.pdb OUTPUT_FILE" << endl;
+  cout << "       BRiQ_Energy INPUT.pdb --output-dir DIRECTORY"
+          " [--weights BREAK CONNECT CLASH] [--pair-ownership pdb|node]"
+          " [--seed SEED]" << endl;
 }
 
 bool prepareEnergyInput(const string &pdbFile, const string &outputFile) {
@@ -258,6 +268,57 @@ bool prepareEnergyInput(const string &pdbFile, const string &outputFile) {
   return output.good();
 }
 
+static bool startOutputDirectory(const string &source, const string &directory,
+                                 string &preparedFile) {
+  size_t separator = source.find_last_of("/\\");
+  string pdbName = source.substr(separator == string::npos ? 0 : separator + 1);
+  size_t extension = pdbName.find_last_of('.');
+  string stem = pdbName.substr(0, extension);
+  preparedFile = stem + ".briq";
+  if (stem.empty() || pdbName == "pairs.csv" || pdbName == "nonpair.csv" ||
+      pdbName == "run.json" || pdbName == preparedFile) {
+    cerr << "input filename conflicts with output filenames" << endl;
+    return false;
+  }
+  ifstream input(source.c_str(), ios::binary);
+  if (!input) {
+    cerr << "cannot open input PDB: " << source << endl;
+    return false;
+  }
+  if (mkdir(directory.c_str(), 0755) != 0 && errno != EEXIST) {
+    cerr << "cannot create output directory (parent must exist): " << directory << endl;
+    return false;
+  }
+  DIR *dir = opendir(directory.c_str());
+  if (!dir) {
+    cerr << "cannot open output directory: " << directory << endl;
+    return false;
+  }
+  bool empty = true;
+  struct dirent *entry;
+  while ((entry = readdir(dir)) != NULL) {
+    string name(entry->d_name);
+    if (name != "." && name != "..") empty = false;
+  }
+  closedir(dir);
+  if (!empty) {
+    cerr << "output directory must be empty: " << directory << endl;
+    return false;
+  }
+  if (chdir(directory.c_str()) != 0) {
+    cerr << "cannot enter output directory" << endl;
+    return false;
+  }
+  ofstream copy(pdbName.c_str(), ios::binary);
+  copy << input.rdbuf();
+  copy.close();
+  if (!copy.good()) {
+    cerr << "cannot copy input PDB" << endl;
+    return false;
+  }
+  return prepareEnergyInput(pdbName, preparedFile);
+}
+
 int main(int argc, char **argv) {
   if (argc > 1 && string(argv[1]) == "--prepare") {
     if (argc != 4) {
@@ -278,6 +339,7 @@ int main(int argc, char **argv) {
   }
 
   string inputFile = string(argv[1]);
+  string outputDirectory;
   string pairFile;
   string nonpairFile;
   string componentFile;
@@ -288,7 +350,13 @@ int main(int argc, char **argv) {
   unsigned int randomSeed = static_cast<unsigned int>(time(NULL));
   for (int arg = 2; arg < argc; arg++) {
     string option(argv[arg]);
-    if (option == "--pair-energies") {
+    if (option == "--output-dir") {
+      if (arg + 1 >= argc || !outputDirectory.empty() || !argv[arg + 1][0]) {
+        cerr << "--output-dir requires one nonempty directory" << endl;
+        return 1;
+      }
+      outputDirectory = argv[++arg];
+    } else if (option == "--pair-energies") {
       if (arg + 1 >= argc || !pairFile.empty()) {
         cerr << "missing or duplicate pair-energy output path" << endl;
         return 1;
@@ -362,6 +430,17 @@ int main(int argc, char **argv) {
       printHelp();
       return 1;
     }
+  }
+  if (!outputDirectory.empty()) {
+    if (!pairFile.empty() || !nonpairFile.empty() || !componentFile.empty()) {
+      cerr << "--output-dir cannot be combined with individual output paths" << endl;
+      return 1;
+    }
+    string preparedFile;
+    if (!startOutputDirectory(inputFile, outputDirectory, preparedFile)) return 1;
+    inputFile = preparedFile;
+    pairFile = "pairs.csv";
+    nonpairFile = "nonpair.csv";
   }
   bool exportPairs = !pairFile.empty();
   if (!exportPairs && !nonpairFile.empty()) {
@@ -494,6 +573,28 @@ int main(int argc, char **argv) {
     delete ft;
     delete et;
     return 1;
+  }
+  if (!outputDirectory.empty()) {
+    ofstream run("run.json");
+    run << setprecision(17)
+        << "{\n  \"program\": \"BRiQ_Energy\",\n"
+        << "  \"version\": \"1.0\",\n"
+        << "  \"exporter_version\": \"0.2.1\",\n"
+        << "  \"source_version\": \"" << BRIQ_SOURCE_VERSION << "\",\n"
+        << "  \"parameters\": {\n"
+        << "    \"break_weight\": " << breakWeight << ",\n"
+        << "    \"connect_weight\": " << connectWeight << ",\n"
+        << "    \"clash_weight\": " << clashWeight << ",\n"
+        << "    \"seed\": " << randomSeed << ",\n"
+        << "    \"pair_ownership\": \"" << (pdbOwnership ? "pdb" : "node") << "\"\n"
+        << "  },\n  \"energy_total\": " << energy << "\n}\n";
+    run.close();
+    if (!run.good()) {
+      cerr << "cannot write run.json" << endl;
+      delete ft;
+      delete et;
+      return 1;
+    }
   }
   if (exportPairs)
     cerr << "pair_ownership " << (pdbOwnership ? "pdb" : "node") << endl;
