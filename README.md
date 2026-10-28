@@ -1,189 +1,186 @@
-# RNA-BRiQ
+# RNA-BRiQ — energy exporter
 
-This repository contains codes for the following work: Peng Xiong, Ruibo Wu, Jian Zhan and Yaoqi Zhou, Robust RNA structure refinement by a nucleobase-centric sampling algorithm coupled with a backbone rotameric and quantum-mechanical-energy-scaled base-base knowledge-based potential. 
+Export RNA structure energies with BRiQ, including per-pair components and the
+remaining backbone and local terms.
 
-[![DOI](https://zenodo.org/badge/339727362.svg)](https://zenodo.org/badge/latestdoi/339727362)
+This fork builds on [RNA-BRiQ](https://github.com/Jian-Zhan/RNA-BRiQ) and
+[Tomasz Żok's energy scorer](https://github.com/tzok/RNA-BRiQ).
+It preserves the original scoring formulas and adds CSV export and validation.
+It does not calculate frustration indices.
 
+## Quick start
 
+With `BRiQ_Energy` installed and `BRiQ_DATAPATH` configured:
 
-This is free software for non-commercial users. If you have any questions, please contact Peng Xiong via email pengx_a@163.com
-
-
-## Installation
-
-### Prerequisites
-
-Make sure these following prerequisites have been installed:
-* C++ compiler: Needs to be C++11 compatible. Gcc 9.3.0 and Clang 9.1.0 tested.
-* GNU Make
-* Git
-* CMake
-* Wget and Tar - Optional: to download and extract the preprocessed data.
-
-### Compilation
-
-1. Clone from the repository:
-
-```
-git clone https://github.com/Jian-Zhan/RNA-BRiQ RNA-BRiQ
+```bash
+BRiQ_Energy molecule.pdb --output-dir results --seed 0
 ```
 
-2. Change directory to `RNA-BRiQ/build/` and compile the codes:
-```
-mkdir RNA-BRiQ/build/
-cd RNA-BRiQ/build/
-cmake ../
-make
-```
+The output directory must be new or empty; its parent must already exist.
+A successful run produces exactly these five files:
 
-### Data
+| File | Contents |
+| --- | --- |
+| `molecule.pdb` | Unchanged copy of the input structure |
+| `molecule.briq` | Generated sequence, pairing annotations and chain breaks |
+| `pairs.csv` | Energy components for every unordered residue pair |
+| `nonpair.csv` | Same-residue terms, rotamer energies and local phosphate energies |
+| `run.json` | Program and source versions, scoring options, random seed and total energy |
 
-Preprocessed data for the RNA-BRiQ can be downloaded from [http://servers.sparks-lab.org/downloads/RNA-BRiQ-data.tar.gz](http://servers.sparks-lab.org/downloads/RNA-BRiQ-data.tar.gz). The data should be downloaded, and extracted to `$BRiQ_DATAPATH` before continuing.
+The PDB keeps its original filename; the `.briq` file uses the same stem.
+For example, `1EHZ.pdb` produces `1EHZ.pdb` and `1EHZ.briq`.
+The generated configuration refers to the copied PDB by a relative path, so the
+directory can be moved. Run later scoring commands from inside that directory.
+Diagnostics go to the console. A failed run may leave partial output.
 
-```
-wget http://servers.sparks-lab.org/downloads/RNA-BRiQ-data.tar.gz
+### Docker on Windows
 
-export BRiQ_DATAPATH=FILEPATH/BRiQ_data     ## Change "FILEPATH" to the real path to contain the preprocessed data
-tar -xvz RNA-BRiQ-data.tar.gz --one-top-level=$BRiQ_DATAPATH
-```
+If you have the locally built `briq:output-dir` image, run this in PowerShell.
+Change the input path for each structure:
 
-## Running the program
+```powershell
+$pdb = (Resolve-Path '.\molecule.pdb').Path
+$name = [System.IO.Path]::GetFileName($pdb)
+$stem = [System.IO.Path]::GetFileNameWithoutExtension($pdb)
+$out = [System.IO.Path]::GetFullPath("$PWD\results\$stem")
 
-### Environment variables
+New-Item -ItemType Directory -Force -Path $out | Out-Null
 
-The path containing BRiQ executables should be appended to `$PATH`. And `$BRiQ_DATAPATH` should be correctly set.
-
-```
-export BRiQ_DATAPATH=FILEPATH/BRiQ_data    ## Change "FILEPATH" to the real path containing the preprocessed data
-export PATH=$PATH:FILEPATH/BRiQ/build/bin  ## Change "FILEPATH" to the real path containing the compiled codes
-```
-
-### Input files
-
-Before running the program, you need to prepare the input file. An example files can be found at `demo/gcaa/input`
-
-```
-pdb gcaa.pdb    ## Initial structure in PDB format
-seq GCGCAAGC    ## RNA nucleotide sequence
-sec ((....))    ## Watson-Crick pairs
-nwc ..(..)..    ## Non-Watson-Crick pairs
-fixed 0 1 6 7   ## Index of the fixed nucleotides during structure sampling, starting from 0
+docker run --rm `
+  --mount "type=bind,source=$pdb,target=/data/$name,readonly" `
+  --mount "type=bind,source=$out,target=/output" `
+  briq:output-dir `
+  BRiQ_Energy "/data/$name" --output-dir /output --seed 0
 ```
 
-If there is only RNA sequence but no reference PDB structure, `BRiQ_InitPDB` can generate an initial PDB structure from sequence. For example, the following command generates an initial PDB structure for RNA sequence `GCGCAAGC`.
+`briq:output-dir` is a local image tag, not a published container image.
 
-```
-BRiQ_InitPDB GCGCAAGC init.pdb
-```
+## Build from source
 
-And the base pairing information can be extracted by `BRiQ_AssignSS` from the input PDB structure `$INPUTPDB` and stored to `$OUTFILE`:
+Use Linux or WSL with Git, CMake, GNU Make and a C++11 compiler.
+The energy exporter also requires the BRiQ parameter tables.
 
-```
-BRiQ_AssignSS $INPUTPDB $OUTFILE
-```
-
-### RNA structure refinement
-
-`BRiQ_Refinement` is the program to refine the initial structure of a RNA.
-
-```
-BRiQ_Refinement $INPUT $OUTPDB $RANDOMSEED
+```bash
+git clone https://github.com/serguppp/RNA-BRiQ.git
+cd RNA-BRiQ
+mkdir build
+cd build
+cmake ..
+make -j2 BRiQ_Energy
+cd ..
+export PATH="$PWD/build/bin:$PATH"
 ```
 
-Where `$INPUT` is the input file, `$OUTPDB` is the output structure, and `$RANDOMSEED` is the random seed.
+Download and extract the [upstream parameter archive](http://servers.sparks-lab.org/downloads/RNA-BRiQ-data.tar.gz).
+Set `BRiQ_DATAPATH` to the extracted parameter directory:
 
-### RNA structure prediction
-
-`BRiQ_Predict` is the program to predict the structure of a RNA.
-```
-BRiQ_Predict $INPUT $OUTPDB $RANDOMSEED
+```bash
+export BRiQ_DATAPATH=/absolute/path/to/BRiQ_data
 ```
 
-Where `$INPUT` is the input file, `$OUTPDB` is the output structure, and `$RANDOMSEED` is the random seed.
+For reproducible results, keep the executable and parameter tables together,
+or preserve the Docker image. `run.json` records scoring options, but does not
+embed or checksum the parameter tables.
 
-### Energy evaluation and pairwise components
+## Scoring options
 
-Prepare the input format used by `BRiQ_Energy` directly from a PDB file:
-
-```
-BRiQ_Energy --prepare input.pdb input.briq
-```
-
-Calculate the global energy as before. To export one row per unordered residue
-pair and a separate per-residue file for all remaining terms:
-
-```
-BRiQ_Energy input.briq --pair-energies pairs.csv
+```bash
+BRiQ_Energy molecule.pdb --output-dir results \
+  --weights 1 1 1 --pair-ownership pdb --seed 0
 ```
 
-The command also writes `pairs.csv.nonpair.csv` unless a separate path is
-given with `--nonpair`. The pair CSV columns are
-`chain_i,residue_i,chain_j,residue_j,sep,contact_type,E_bb,E_bo,E_oo,E_clash,E_pair`.
-`sep` is BRiQ's existing sequence-separation class (`0`, `1`, `2`, or `long`).
-`contact_type` is determined independently of energy: WC/non-WC assignments
-come from `AssignRNASS`; stacking requires adjacent connected residues with
-base-normal angle <=30 degrees, plane distance <=4.0 A and base-center distance
-<=8.0 A; base-ribose and base-phosphate labels use heavy-atom distances <=4.0 A.
-`base_contact` uses a base-atom distance <=4.5 A. `unannotated` means none of
-these explicit rules matched; it does not assert that the energy is zero or
-that no physical contact exists.
+| Option | Meaning | Default |
+| --- | --- | --- |
+| `--weights BREAK CONNECT CLASH` | Three outer BRiQ scoring weights | `1 1 1` |
+| `--pair-ownership pdb\|node` | Assign phosphates to their PDB residue or internal storage node | `pdb` |
+| `--seed N` | Fix the random seed for repeatable runs | Time-based |
 
-The default `--pair-ownership pdb` assigns outgoing phosphate atoms to their
-PDB owner (the next residue), matching BRiQ's own PDB writer. Earlier exports
-grouped them by their storage node instead. Use `--pair-ownership node` to
-reproduce that grouping; the CSV schema remains unchanged. In PDB mode `sep`
-describes the reported endpoint residues, not necessarily the original node
-separation used for each phosphate subterm.
+Use a fixed seed when comparing structures or scoring options. BRiQ uses
+random loop-closure flags that can affect scores when BREAK and CONNECT differ.
 
-`E_bb` is the six-dimensional base-base term; `E_bo` sums weighted base-ribose
-and base-phosphate oxygen-table terms; `E_oo` sums ribose-ribose and
-ribose-phosphate hydrogen-bond terms; `E_clash` sums the BRiQ atom-clash terms
-from all pair interaction helpers. `E_pair` is the sum of these four columns.
-The nonpair CSV has separate columns for same-residue base-ribose,
-base-phosphate and ribose-phosphate terms, rotamer energy, and local phosphate
-energy. Thus `sum(E_pair) + sum(E_nonpair)` reproduces the global score.
-Local phosphate energy depends on an adjacent-ribose link and is anchored at
-its upstream node for bookkeeping; it is not a physically one-body term.
+### Reading the energies
 
-Weights keep the existing defaults and can be set explicitly for comparison:
+`pairs.csv` contains **all residue pairs**, including pairs with zero energy.
 
-```
-BRiQ_Energy input.briq --pair-energies pairs.csv --weights 0.5 1.25 0.75 --seed 0
+| Column | Energy contribution |
+| --- | --- |
+| `E_bb` | Six-dimensional base–base potential |
+| `E_bo` | Base–ribose and base–phosphate oxygen-table terms |
+| `E_oo` | Ribose–ribose and ribose–phosphate hydrogen-bond terms |
+| `E_clash` | Pairwise steric terms |
+| `E_pair` | Sum of the four components above |
+
+The complete score is recovered, within floating-point precision, by:
+
+```text
+total energy = sum(pairs.csv:E_pair) + sum(nonpair.csv:E_nonpair)
 ```
 
-The three values are the existing break, connect and clash weights. Original
-BRiQ randomly selects loop closure flags; use `--seed` to make unequal
-break/connect weighting repeatable. These flags are distinct from physical
-input `break` positions. The default seed remains time-based.
-The one-argument invocation and raw `--components COMPONENTS.tsv` output remain supported. Verify
-the export, including weighted and two-chain cases, with:
+`nonpair.csv` groups remaining terms by residue for bookkeeping. Local
+phosphate energy depends on a link between adjacent riboses, so it is not a
+single-residue physical interaction.
 
-```
-python3 tests/test_pair_energy_export.py build/bin/BRiQ_Energy path/to/1EHZ.pdb
-```
+`contact_type` provides geometric and BRiQ pairing annotations. These labels
+are not a complete contact classification; `unannotated` does not mean there
+is no contact, and zero energy does not mean there is no contact.
 
-For a Docker-built image, run the same checks from the host with:
+See the [technical report](docs/pair-energy-validation.md) for term definitions,
+phosphate ownership, sequence-separation conventions and limitations.
 
-```
-python3 tests/test_pair_energy_export.py --docker briq:tzok path/to/1EHZ.pdb
-```
+## Advanced export
 
-For independent validation of every local component against a separately
-compiled, unmodified BRiQ reference, build an image from the current checkout
-and run:
+To prepare and score separately, or choose individual output paths:
 
-```
-python tests/test_pair_energy_validation.py --docker briq:validated --build-reference
+```bash
+BRiQ_Energy --prepare molecule.pdb input.briq
+BRiQ_Energy input.briq --seed 0 \
+  --pair-energies pairs.csv --nonpair nonpair.csv
 ```
 
-This uses the bundled 1RNA/1EHZ fixtures and absolute tolerance `1e-9`. It
-retains logs, original directional helper outputs and all CSVs in the printed
-artifact directory. On Windows, generated inputs use LF because the original
-parser does not strip CRLF line endings. See the [validation report](docs/pair-energy-validation.md)
-for term definitions, ownership conventions, results and limitations.
+Score without CSV export:
 
-### Demonstrations
+```bash
+BRiQ_Energy input.briq --seed 0
+```
 
-* [demo/refinement/](demo/refinement/): RNA structure refinement.
-* [demo/partial_predict/](demo/partial_predict/): RNA structure prediction from an initial reference structure.
-* [demo/predict_from_seq_SS/](demo/predict_from_seq_SS/): RNA structure prediction from sequence and pre-assigned secondary structure information.
+Add `--components components.tsv` for raw directional helper terms.
+Individual output flags cannot be combined with `--output-dir`.
+If `--nonpair` is omitted during pair export, its filename defaults to
+`<pair-output-path>.nonpair.csv`.
+
+## Validation
+
+Run from the repository root with Docker and Python installed:
+
+```bash
+# Five-file output, score reconstruction and overwrite protection
+python tests/test_output_directory.py --docker briq:output-dir
+
+# Compare exported components against a separately built original BRiQ scorer
+python tests/test_pair_energy_validation.py --docker briq:output-dir --build-reference
+```
+
+The tests use the bundled 1RNA and 1EHZ structures. Detailed results and known
+limitations are in the [validation report](docs/pair-energy-validation.md).
+Agreement with original BRiQ validates the export; it does not establish the
+scientific accuracy of the potential or a frustration calculation.
+
+## Other BRiQ tools
+
+Build all targets with `make -j2` from `build/` to use the original prediction
+and refinement tools. Examples are in
+[demo/refinement/](demo/refinement/),
+[demo/partial_predict/](demo/partial_predict/) and
+[demo/predict_from_seq_SS/](demo/predict_from_seq_SS/).
+
+## Reference and usage terms
+
+Peng Xiong, Ruibo Wu, Jian Zhan and Yaoqi Zhou.
+*Robust RNA structure refinement by a nucleobase-centric sampling algorithm
+coupled with a backbone rotameric and quantum-mechanical-energy-scaled
+base-base knowledge-based potential.*
+[Nature Communications (2021)](https://doi.org/10.1038/s41467-021-23100-4).
+
+Upstream states that the software is free for non-commercial users.
+For questions about upstream usage terms, contact Peng Xiong at
+pengx_a@163.com.
