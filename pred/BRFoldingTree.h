@@ -61,6 +61,13 @@ public:
 
 
 
+struct ScoringProfile {
+    double rotamerSeconds = 0;
+    double fragmentSeconds = 0;
+    double treeSeconds = 0;
+    double scoreSeconds = 0;
+};
+
 class BRFoldingTree {
 public:
 	int seqLen;
@@ -100,6 +107,8 @@ public:
 
 	FragmentLibrary* fragLib;
 	BaseRotamerLib* rotLib;
+	bool ownsFragmentLibrary = true;
+	bool ownsRotamerLibrary = true;
 
 	int* sepTable;
 
@@ -125,7 +134,9 @@ public:
 
 	EnergyTable* et;
 
-	BRFoldingTree(const string& inputFile, EnergyTable* et);
+	BRFoldingTree(const string& inputFile, EnergyTable* et,
+        BaseRotamerLib* sharedRotamers = NULL, FragmentLibrary* sharedFragments = NULL,
+        ScoringProfile* profile = NULL);
 
 	BRFoldingTree(const string& inputFile);
 	void randInit();

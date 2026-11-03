@@ -295,3 +295,20 @@ base-base knowledge-based potential.*
 Upstream states that the software is free for non-commercial users.
 For questions about upstream usage terms, contact Peng Xiong at
 pengx_a@163.com.
+
+### Scoring engines and profiling
+
+Total-only batches accept `--engine legacy|shared` and `--profile`.
+`legacy` reloads rotamer/fragment libraries per structure; `shared` (default)
+loads them once per batch. Both retain the original full tree and energy function.
+Profile stderr rows are `job_index,prepare_s,rotamers_s,fragments_s,tree_s,energy_s`.
+The resource initialization time is logged separately. Scoring weights and seed
+remain 1/1/1 and 0. Shared libraries are borrowed by each tree; fallback rotamers
+are copied so that destroying a tree cannot delete shared library entries.
+
+`tests/benchmark_scoring.py --workspace WORKSPACE --image IMAGE` compares engines
+on a prepared `jobs-benchmark.tsv`, checks every energy within `1e-9`, and records
+per-stage timings. `docs/performance-stage1.json` records the initial 16-job
+measurement (eight 1RNA and eight 1EHZ mutants): 92.318 s legacy vs 35.230 s shared,
+with zero energy difference. Another scoring process was running concurrently;
+these are measurements under that load, not isolated throughput guarantees.

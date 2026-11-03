@@ -329,7 +329,8 @@ static bool startOutputDirectory(const string &source, const string &directory,
 }
 
 static int runEnergy(int argc, char **argv, EnergyTable *sharedTables = NULL,
-                     double *totalResult = NULL) {
+                     double *totalResult = NULL, BaseRotamerLib *rotamers = NULL,
+                     FragmentLibrary *fragments = NULL, ScoringProfile *profile = NULL) {
   if (argc > 1 && string(argv[1]) == "--prepare") {
     if (argc != 4) {
       printHelp();
@@ -477,8 +478,9 @@ static int runEnergy(int argc, char **argv, EnergyTable *sharedTables = NULL,
   unique_ptr<EnergyTable> ownedTables;
   if (sharedTables == NULL) ownedTables.reset(new EnergyTable());
   EnergyTable *et = sharedTables != NULL ? sharedTables : ownedTables.get();
-  unique_ptr<BRFoldingTree> ownedTree(new BRFoldingTree(inputFile, et));
+  unique_ptr<BRFoldingTree> ownedTree(new BRFoldingTree(inputFile, et, rotamers, fragments, profile));
   BRFoldingTree *ft = ownedTree.get();
+  const auto scoreStart = chrono::steady_clock::now();
   double energy;
   ofstream components;
   if (!componentFile.empty()) {
@@ -573,6 +575,7 @@ static int runEnergy(int argc, char **argv, EnergyTable *sharedTables = NULL,
     cerr << "BRiQ produced a non-finite energy" << endl;
     return 1;
   }
+  if (profile != NULL) profile->scoreSeconds = chrono::duration<double>(chrono::steady_clock::now()-scoreStart).count();
   if (totalResult != NULL) *totalResult = energy;
   if (!outputDirectory.empty()) {
     ofstream run("run.json");
@@ -841,8 +844,20 @@ static string csvQuoted(const string &value) {
 }
 
 static int runBatchTotal(int argc, char **argv) {
-  if (argc != 4) {
-    cerr << "Usage: BRiQ_Energy --batch-total JOBS.tsv TOTALS.csv" << endl;
+  string engine = "shared";
+  bool profiling = false;
+  if (argc < 4) {
+    cerr << "Usage: BRiQ_Energy --batch-total JOBS.tsv TOTALS.csv [--engine legacy|shared] [--profile]" << endl;
+    return 1;
+  }
+  for (int arg = 4; arg < argc; ++arg) {
+    string option(argv[arg]);
+    if (option == "--profile") profiling = true;
+    else if (option == "--engine" && arg+1 < argc) engine = argv[++arg];
+    else { cerr << "Unknown batch-total option: " << option << endl; return 1; }
+  }
+  if (engine != "legacy" && engine != "shared") {
+    cerr << "Engine must be legacy or shared" << endl;
     return 1;
   }
   vector<string> jobs;
@@ -875,16 +890,28 @@ static int runBatchTotal(int argc, char **argv) {
        << " seed=0 weights=1,1,1" << endl;
   srand(0);
   cerr << "[batch-total] Loading shared energy tables" << endl;
+  const auto resourceStart = chrono::steady_clock::now();
   EnergyTable tables;
+  unique_ptr<BaseRotamerLib> sharedRotamers;
+  unique_ptr<FragmentLibrary> sharedFragments;
+  if (engine == "shared") {
+    sharedRotamers.reset(new BaseRotamerLib());
+    sharedFragments.reset(new FragmentLibrary(sharedRotamers.get()));
+  }
+  cerr << "[profile-resources] engine=" << engine << " seconds="
+       << chrono::duration<double>(chrono::steady_clock::now()-resourceStart).count() << endl;
   for (size_t index = 0; index < jobs.size(); ++index) {
     cerr << "[batch-total " << index + 1 << "/" << jobs.size() << "] "
          << jobs[index] << endl;
+    const auto preparationStart = chrono::steady_clock::now();
+    ScoringProfile profile;
     TotalScratch scratch;
     if (symlink(jobs[index].c_str(), scratch.pdb.c_str()) != 0 ||
         !prepareEnergyInput(scratch.pdb, scratch.prepared)) {
       cerr << "Cannot prepare batch-total job " << index << endl;
       return 1;
     }
+    const double preparationSeconds = chrono::duration<double>(chrono::steady_clock::now()-preparationStart).count();
     vector<string> arguments = {
       "BRiQ_Energy", scratch.prepared,
       "--seed", "0", "--weights", "1", "1", "1"
@@ -894,7 +921,10 @@ static int runBatchTotal(int argc, char **argv) {
     pointers.push_back(NULL);
     double energy = numeric_limits<double>::quiet_NaN();
     int status = runEnergy(static_cast<int>(arguments.size()), pointers.data(),
-                           &tables, &energy);
+                           &tables, &energy, sharedRotamers.get(), sharedFragments.get(), &profile);
+    if (profiling) cerr << "[profile] " << index << "," << preparationSeconds << ","
+       << profile.rotamerSeconds << "," << profile.fragmentSeconds << ","
+       << profile.treeSeconds << "," << profile.scoreSeconds << endl;
     if (status != 0 || !isfinite(energy)) {
       cerr << "Batch-total stopped at job " << index << endl;
       return status != 0 ? status : 1;

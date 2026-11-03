@@ -7,6 +7,7 @@
 
 #include <pred/BRFoldingTree.h>
 #include <iomanip>
+#include <chrono>
 #include <sstream>
 #include <stdexcept>
 
@@ -233,15 +234,22 @@ BRTreeInfo::~BRTreeInfo() {
 	delete [] nodes;
 }
 
-BRFoldingTree::BRFoldingTree(const string& inputFile, EnergyTable* et){
+BRFoldingTree::BRFoldingTree(const string& inputFile, EnergyTable* et,
+    BaseRotamerLib* sharedRotamers, FragmentLibrary* sharedFragments, ScoringProfile* profile){
+    const auto constructionStart = chrono::steady_clock::now();
 
 	this->et = et;
 
-	this->rotLib = new BaseRotamerLib(); //deleted
-	cout << "rot lib" << endl;
-	this->fragLib = new FragmentLibrary(rotLib);  //deleted
-
-	cout << "frag lib" << endl;
+    ownsRotamerLibrary = sharedRotamers == NULL;
+    rotLib = sharedRotamers != NULL ? sharedRotamers : new BaseRotamerLib();
+    const auto rotamerReady = chrono::steady_clock::now();
+    ownsFragmentLibrary = sharedFragments == NULL;
+    fragLib = sharedFragments != NULL ? sharedFragments : new FragmentLibrary(rotLib);
+    const auto fragmentsReady = chrono::steady_clock::now();
+    if (profile != NULL) {
+        profile->rotamerSeconds = chrono::duration<double>(rotamerReady-constructionStart).count();
+        profile->fragmentSeconds = chrono::duration<double>(fragmentsReady-rotamerReady).count();
+    }
 
 	RNABaseLib baseLib;
 
@@ -401,7 +409,7 @@ BRFoldingTree::BRFoldingTree(const string& inputFile, EnergyTable* et){
 
 		BaseRotamer* rot;
 		if(!baseList[i]->backboneComplete())
-			rot = rotLib->getLowestEnergyRotamer(baseList[i]->baseTypeInt);
+			rot = new BaseRotamer(*rotLib->getLowestEnergyRotamer(baseList[i]->baseTypeInt));
 		else
 			rot = new BaseRotamer(baseList[i]);
 
@@ -734,6 +742,8 @@ BRFoldingTree::BRFoldingTree(const string& inputFile, EnergyTable* et){
 	checkRibose();
 
 	updateEnergies(0.0);
+    if (profile != NULL)
+        profile->treeSeconds = chrono::duration<double>(chrono::steady_clock::now()-fragmentsReady).count();
 }
 
 BRFoldingTree::BRFoldingTree(const string& inputFile){
@@ -7254,8 +7264,8 @@ BRFoldingTree::~BRFoldingTree() {
 	delete [] allRcE;
 	delete [] tmpRcE;
 
-	delete fragLib;
-	delete rotLib;
+	if (ownsFragmentLibrary) delete fragLib;
+	if (ownsRotamerLibrary) delete rotLib;
 
 	if(pseudoNode != NULL)
 		delete pseudoNode;
