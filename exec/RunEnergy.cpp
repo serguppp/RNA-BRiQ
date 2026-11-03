@@ -9,6 +9,9 @@
 #include "model/AssignRNASS.h"
 #include "model/ProteinRep.h"
 #include <fstream>
+#include <cstdio>
+#include <fcntl.h>
+#include <stdexcept>
 #include <iomanip>
 #include <iostream>
 #include <algorithm>
@@ -213,6 +216,7 @@ bool checkInputFile(const string &inputFile) {
 }
 
 void printHelp() {
+  cout << "       BRiQ_Energy --batch-total JOBS.tsv TOTALS.csv (one absolute PDB path per row)" << endl;
   cout << "       BRiQ_Energy --batch JOBS.tsv (seed 0, weights 1/1/1, PDB ownership)" << endl;
   cout << "Usage: BRiQ_Energy INPUT_FILE [--pair-energies PAIRS.csv]"
           " [--nonpair NONPAIR.csv] [--components COMPONENTS.tsv]"
@@ -324,7 +328,8 @@ static bool startOutputDirectory(const string &source, const string &directory,
   return prepareEnergyInput(pdbName, preparedFile);
 }
 
-static int runEnergy(int argc, char **argv, EnergyTable *sharedTables = NULL) {
+static int runEnergy(int argc, char **argv, EnergyTable *sharedTables = NULL,
+                     double *totalResult = NULL) {
   if (argc > 1 && string(argv[1]) == "--prepare") {
     if (argc != 4) {
       printHelp();
@@ -568,6 +573,7 @@ static int runEnergy(int argc, char **argv, EnergyTable *sharedTables = NULL) {
     cerr << "BRiQ produced a non-finite energy" << endl;
     return 1;
   }
+  if (totalResult != NULL) *totalResult = energy;
   if (!outputDirectory.empty()) {
     ofstream run("run.json");
     run << setprecision(17)
@@ -763,8 +769,153 @@ static int runBatch(int argc, char **argv) {
   return 0;
 }
 
+// Internal preparation files live in the container, never in the mounted workspace.
+// A private symlink avoids copying the PDB or changing the working directory.
+class TotalScratch {
+ public:
+  string directory;
+  string pdb;
+  string prepared;
+  TotalScratch() {
+    char pattern[] = "/tmp/briq-total-XXXXXX";
+    char *created = mkdtemp(pattern);
+    if (created == NULL) throw runtime_error("Cannot create total-scoring scratch directory");
+    directory = created;
+    pdb = directory + "/input.pdb";
+    prepared = directory + "/input.briq";
+  }
+  ~TotalScratch() {
+    unlink(prepared.c_str());
+    unlink(pdb.c_str());
+    rmdir(directory.c_str());
+  }
+ private:
+  TotalScratch(const TotalScratch &);
+  TotalScratch &operator=(const TotalScratch &);
+};
+
+static bool readTotalJobs(const string &path, vector<string> &jobs) {
+  ifstream manifest(path.c_str());
+  if (!manifest) {
+    cerr << "Cannot open batch-total manifest: " << path << endl;
+    return false;
+  }
+  string line;
+  size_t number = 0;
+  while (getline(manifest, line)) {
+    ++number;
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.empty()) continue;
+    if (line[0] != '/' || line.find_first_of("\t\r") != string::npos ||
+        line.find('\0') != string::npos) {
+      cerr << "Manifest line " << number
+           << ": expected one absolute PDB path (no header or tabs)" << endl;
+      return false;
+    }
+    struct stat info;
+    if (stat(line.c_str(), &info) != 0 || !S_ISREG(info.st_mode)) {
+      cerr << "Cannot read batch-total PDB: " << line << endl;
+      return false;
+    }
+    ifstream input(line.c_str());
+    if (!input) {
+      cerr << "Cannot open batch-total PDB: " << line << endl;
+      return false;
+    }
+    jobs.push_back(line);
+  }
+  if (!manifest.eof() || jobs.empty()) {
+    cerr << "Batch-total manifest is empty or unreadable" << endl;
+    return false;
+  }
+  return true;
+}
+
+static string csvQuoted(const string &value) {
+  string result = "\"";
+  for (size_t i = 0; i < value.size(); ++i) {
+    if (value[i] == '"') result += '"';
+    result += value[i];
+  }
+  return result + "\"";
+}
+
+static int runBatchTotal(int argc, char **argv) {
+  if (argc != 4) {
+    cerr << "Usage: BRiQ_Energy --batch-total JOBS.tsv TOTALS.csv" << endl;
+    return 1;
+  }
+  vector<string> jobs;
+  if (!readTotalJobs(argv[2], jobs)) return 1;
+  string output(argv[3]);
+  if (output.empty() || output[0] != '/') {
+    cerr << "Totals output must be an absolute container path" << endl;
+    return 1;
+  }
+  // Exclusive creation also protects inputs, manifests and dangling symlinks.
+  int descriptor = open(output.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
+  if (descriptor < 0) {
+    cerr << "Cannot create totals CSV (parent must exist; output must not exist): "
+         << output << endl;
+    return 1;
+  }
+  FILE *opened = fdopen(descriptor, "w");
+  if (opened == NULL) {
+    close(descriptor);
+    cerr << "Cannot open totals CSV stream" << endl;
+    return 1;
+  }
+  unique_ptr<FILE, int (*)(FILE *)> totals(opened, fclose);
+  if (fputs("job_index,input_pdb,E_total\n", totals.get()) < 0 ||
+      fflush(totals.get()) != 0) {
+    cerr << "Cannot write totals CSV header" << endl;
+    return 1;
+  }
+  cerr << "[batch-total] source_version=" << BRIQ_SOURCE_VERSION
+       << " seed=0 weights=1,1,1" << endl;
+  srand(0);
+  cerr << "[batch-total] Loading shared energy tables" << endl;
+  EnergyTable tables;
+  for (size_t index = 0; index < jobs.size(); ++index) {
+    cerr << "[batch-total " << index + 1 << "/" << jobs.size() << "] "
+         << jobs[index] << endl;
+    TotalScratch scratch;
+    if (symlink(jobs[index].c_str(), scratch.pdb.c_str()) != 0 ||
+        !prepareEnergyInput(scratch.pdb, scratch.prepared)) {
+      cerr << "Cannot prepare batch-total job " << index << endl;
+      return 1;
+    }
+    vector<string> arguments = {
+      "BRiQ_Energy", scratch.prepared,
+      "--seed", "0", "--weights", "1", "1", "1"
+    };
+    vector<char *> pointers;
+    for (size_t i = 0; i < arguments.size(); ++i) pointers.push_back(&arguments[i][0]);
+    pointers.push_back(NULL);
+    double energy = numeric_limits<double>::quiet_NaN();
+    int status = runEnergy(static_cast<int>(arguments.size()), pointers.data(),
+                           &tables, &energy);
+    if (status != 0 || !isfinite(energy)) {
+      cerr << "Batch-total stopped at job " << index << endl;
+      return status != 0 ? status : 1;
+    }
+    string quoted = csvQuoted(jobs[index]);
+    if (fprintf(totals.get(), "%zu,%s,%.17g\n", index, quoted.c_str(), energy) < 0 ||
+        fflush(totals.get()) != 0) {
+      cerr << "Failed while writing totals CSV" << endl;
+      return 1;
+    }
+  }
+  if (fclose(totals.release()) != 0) {
+    cerr << "Failed while closing totals CSV" << endl;
+    return 1;
+  }
+  return 0;
+}
+
 int main(int argc, char **argv) {
   try {
+    if (argc > 1 && string(argv[1]) == "--batch-total") return runBatchTotal(argc, argv);
     if (argc > 1 && string(argv[1]) == "--batch") return runBatch(argc, argv);
     return runEnergy(argc, argv);
   } catch (const exception &error) {

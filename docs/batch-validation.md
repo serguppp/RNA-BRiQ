@@ -47,3 +47,26 @@ Batch mode currently fixes seed 0, weights 1/1/1 and PDB phosphate ownership.
 Potential tables are shared; structure preparation and scoring remain per job.
 This checks implementation compatibility, not the physical validity of the
 potential, mutation geometry or a frustration index.
+
+## Total-only batch validation (2026-11-04)
+
+`tests/test_batch_total.py --docker briq:batch-total-test` passed, with the optional
+`--variants` directory containing saved local 1RNA A:1 A/C/G/U exports. Eight jobs
+were compared: 1RNA, 1EHZ, repeated 1RNA, another 1RNA filename containing spaces
+and a comma, and four saved mutants. Both full-batch totals and total-only totals
+matched prior saved reference energies with absolute tolerance `1e-9`.
+
+The test checked zero-based manifest ordering, repeated inputs, CSV path escaping,
+CRLF and blank rows, one table initialization, no new per-variant output files,
+and removal of per-job preparation files from a separately mounted `/tmp`.
+Invalid manifests, missing inputs, existing outputs, input/output aliases, missing
+output parents, relative output paths and incorrect argument counts were rejected.
+
+The eight-job full-export batch took **68.221 s**, versus **56.947 s** for total-only
+(**1.20x**, about 16.5% less elapsed time). This is a small sequential measurement
+under the current machine load, not a prediction for a complete frustration scan.
+Mutant generation is excluded. Removing exports does not remove full-structure
+preparation and scoring; those costs remain.
+
+`tests/test_output_directory.py --docker briq:batch-total-test` also passed the
+existing five-file mode for 1RNA and 1EHZ, including argument and overwrite checks.

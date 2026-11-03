@@ -119,6 +119,53 @@ overwrite protection. It reports elapsed times for three separate runs versus
 one three-job batch. This is a small benchmark, not a prediction of full-scan time.
 Measured results are recorded in [batch-validation.md](docs/batch-validation.md).
 
+## Total-only batch scoring
+
+Use this mode when only the total energy of each variant is needed:
+
+```text
+BRiQ_Energy --batch-total JOBS.tsv TOTALS.csv
+```
+
+Unlike `--batch`, this manifest has **one absolute container PDB path per row**,
+without a header or an output-directory column. Blank rows and CRLF are accepted.
+Repeated inputs are allowed and produce separate rows in manifest order.
+
+```text
+/work/structures/variant_AA.pdb
+/work/structures/variant_AC.pdb
+```
+
+```powershell
+$workspace = (Resolve-Path '.\batch-work').Path
+docker run --rm `
+  --mount "type=bind,source=$workspace,target=/work" `
+  briq:batch BRiQ_Energy --batch-total /work/jobs-total.tsv /work/totals.csv
+```
+
+`TOTALS.csv` must be an absolute container path with an existing parent; the file
+must not already exist. All manifest paths are checked before creating the CSV
+or loading potential tables. Output columns are `job_index,input_pdb,E_total`;
+indices start at zero and paths are CSV-escaped. Connect contact IDs and mutation
+identities to these indices in the caller instead of parsing PDB filenames.
+
+One set of potential tables is loaded. Each job uses seed 0 and scoring weights
+1/1/1, with the same preparation and total-energy function as ordinary scoring.
+Preparation uses a private temporary directory inside the container, removed
+after each job. The mode does not create per-variant output directories, copy
+PDBs into outputs, annotate exported contacts, or write pair/nonpair/run files.
+It still prepares and scores each entire structure. Source version and fixed
+parameters are written to stderr; retain that log for provenance.
+
+The CSV is flushed after every completed job. On a runtime failure it can contain
+only a prefix of results: check the process exit status and expected row count.
+There is no automatic resume or overwrite. Existing full-export modes are retained
+for native contact discovery and detailed inspection of selected variants.
+
+```powershell
+python tests/test_batch_total.py --docker briq:batch
+```
+
 ## Build from source
 
 Use Linux or WSL with Git, CMake, GNU Make and a C++11 compiler.
