@@ -55,6 +55,70 @@ docker run --rm `
 
 `briq:output-dir` is a local image tag, not a published container image.
 
+## Batch scoring
+
+`BRiQ_Energy --batch JOBS.tsv` scores multiple PDB files in one process and
+loads the energy tables once. Each structure still gets its own five-file output.
+Batch mode uses seed **0**, weights **1/1/1**, and **PDB** phosphate ownership.
+Single-structure scoring remains available with the existing options.
+
+The manifest has no header. Each row contains an absolute **container** PDB path,
+a tab character, and an absolute container output-directory path. Spaces are
+allowed; tabs and newlines within paths are not. LF and CRLF files are accepted.
+For example (the gap between the paths must be a tab):
+
+```text
+/work/structures/1RNA.pdb	/work/scores/original
+/work/structures/1RNA_A1A.pdb	/work/scores/A1A
+```
+
+All inputs and output parents must exist. Output directories must be new or empty
+and unique. The whole manifest is checked before tables are loaded or job outputs
+are created. Jobs run sequentially, resetting the seed for each structure; scoring
+stops on an error. A failed run may leave completed or partial job outputs.
+
+### Build the batch image
+
+From this repository in PowerShell, using the existing local image containing
+BRiQ's parameter tables:
+
+```powershell
+$sourceVersion = git describe --always --dirty
+docker build -f Dockerfile.batch `
+  --build-arg "BRIQ_SOURCE_VERSION=$sourceVersion" `
+  -t briq:batch .
+```
+
+The build reuses `briq:output-dir`. To use a different compatible local base image,
+add `--build-arg BRIQ_BASE_IMAGE=YOUR_IMAGE`. The parameter tables are inherited;
+they are not downloaded again. The source version is required so `run.json`
+identifies the scorer build.
+
+### Run a batch
+
+Prepare `jobs.tsv` and the directories inside a workspace, then mount that whole
+workspace. For example, if the manifest paths begin with `/work/`:
+
+```powershell
+$workspace = (Resolve-Path '.\batch-work').Path
+docker run --rm `
+  --mount "type=bind,source=$workspace,target=/work" `
+  briq:batch BRiQ_Energy --batch /work/jobs.tsv
+```
+
+Run the integration regression against the previous single-process image:
+
+```powershell
+python tests/test_batch_energy.py --docker briq:batch --reference briq:output-dir
+python tests/test_output_directory.py --docker briq:batch
+```
+
+The regression compares total, pair and nonpair components for 1RNA and 1EHZ,
+repeats an input after a different structure, and checks manifest preflight and
+overwrite protection. It reports elapsed times for three separate runs versus
+one three-job batch. This is a small benchmark, not a prediction of full-scan time.
+Measured results are recorded in [batch-validation.md](docs/batch-validation.md).
+
 ## Build from source
 
 Use Linux or WSL with Git, CMake, GNU Make and a C++11 compiler.

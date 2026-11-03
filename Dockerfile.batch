@@ -1,0 +1,12 @@
+# Reuse the local image containing the original BRiQ parameter tables.
+ARG BRIQ_BASE_IMAGE=briq:output-dir
+FROM ${BRIQ_BASE_IMAGE}
+
+ARG BRIQ_SOURCE_VERSION=unknown
+COPY . /opt/RNA-BRiQ
+RUN test "${BRIQ_SOURCE_VERSION}" != "unknown" \
+ && cmake -S /opt/RNA-BRiQ -B /opt/RNA-BRiQ/build-batch \
+      -DBRIQ_SOURCE_VERSION="${BRIQ_SOURCE_VERSION}" \
+ && cmake --build /opt/RNA-BRiQ/build-batch --target BRiQ_Energy --parallel 2
+
+ENV PATH="/opt/RNA-BRiQ/build-batch/bin:${PATH}"
