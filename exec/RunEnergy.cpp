@@ -17,6 +17,9 @@
 #include <cmath>
 #include <cstdlib>
 #include <limits>
+#include <memory>
+#include <utility>
+#include <chrono>
 #include <sstream>
 #include <set>
 #include <vector>
@@ -150,13 +153,13 @@ static bool parseDouble(const char *text, double &value) {
   return end != text && *end == '\0' && isfinite(value);
 }
 
-void checkInputFile(const string &inputFile) {
+bool checkInputFile(const string &inputFile) {
   ifstream file;
   cout << "check input file: " << endl;
   file.open(inputFile.c_str(), ios::in);
   if (!file.is_open()) {
     cout << "fail to open inputFile: " << inputFile << endl;
-    exit(0);
+    return false;
   }
   file.close();
 
@@ -168,47 +171,49 @@ void checkInputFile(const string &inputFile) {
 
   if (pdbFile == "") {
     cout << "invalid inputFile: initial pdb required" << endl;
-    exit(0);
+    return false;
   }
 
   if (baseSeq == "") {
     cout << "invalid inputFile: base sequence required" << endl;
-    exit(0);
+    return false;
   }
 
   if (baseSec == "") {
     cout << "invalid inputFile: Watson-Crick pairing sequence required" << endl;
-    exit(0);
+    return false;
   }
 
   if (nwcSec == "") {
     cout << "invalid inputFile: non-Watson-Crick pairing sequence required"
          << endl;
-    exit(0);
+    return false;
   }
 
   if (baseSec.length() != baseSeq.length()) {
     cout << "the length of Watson-Crick pairing sequence must equal to the "
             "length of base sequence"
          << endl;
-    exit(0);
+    return false;
   }
 
   if (nwcSec.length() != baseSeq.length()) {
     cout << "the length of non-Watson-Crick pairing sequence must equal to the "
             "length of base sequence"
          << endl;
-    exit(0);
+    return false;
   }
 
   file.open(pdbFile.c_str(), ios::in);
   if (!file.is_open()) {
     cout << "fail to open pdb file: " << pdbFile << endl;
-    exit(0);
+    return false;
   }
+  return true;
 }
 
 void printHelp() {
+  cout << "       BRiQ_Energy --batch JOBS.tsv (seed 0, weights 1/1/1, PDB ownership)" << endl;
   cout << "Usage: BRiQ_Energy INPUT_FILE [--pair-energies PAIRS.csv]"
           " [--nonpair NONPAIR.csv] [--components COMPONENTS.tsv]"
           " [--weights BREAK CONNECT CLASH] [--pair-ownership pdb|node]"
@@ -319,7 +324,7 @@ static bool startOutputDirectory(const string &source, const string &directory,
   return prepareEnergyInput(pdbName, preparedFile);
 }
 
-int main(int argc, char **argv) {
+static int runEnergy(int argc, char **argv, EnergyTable *sharedTables = NULL) {
   if (argc > 1 && string(argv[1]) == "--prepare") {
     if (argc != 4) {
       printHelp();
@@ -462,18 +467,19 @@ int main(int argc, char **argv) {
 
   srand(randomSeed);
 
-  checkInputFile(inputFile);
+  if (!checkInputFile(inputFile)) return 1;
 
-  EnergyTable *et = new EnergyTable();
-  BRFoldingTree *ft = new BRFoldingTree(inputFile, et);
+  unique_ptr<EnergyTable> ownedTables;
+  if (sharedTables == NULL) ownedTables.reset(new EnergyTable());
+  EnergyTable *et = sharedTables != NULL ? sharedTables : ownedTables.get();
+  unique_ptr<BRFoldingTree> ownedTree(new BRFoldingTree(inputFile, et));
+  BRFoldingTree *ft = ownedTree.get();
   double energy;
   ofstream components;
   if (!componentFile.empty()) {
     components.open(componentFile.c_str(), ios::out);
     if (!components.is_open()) {
       cerr << "fail to open component output file: " << componentFile << endl;
-      delete et;
-      delete ft;
       return 1;
     }
   }
@@ -486,8 +492,6 @@ int main(int argc, char **argv) {
         pairOutput.close();
       if (nonpairOutput.is_open())
         nonpairOutput.close();
-      delete et;
-      delete ft;
       return 1;
     }
     pairOutput << setprecision(17);
@@ -506,8 +510,6 @@ int main(int argc, char **argv) {
       delete pdb;
       pairOutput.close();
       nonpairOutput.close();
-      delete et;
-      delete ft;
       return 1;
     }
     vector<PairEnergyMetadata> residueMetadata;
@@ -533,8 +535,6 @@ int main(int argc, char **argv) {
       if (fabs(energy - exportedEnergy) > 1e-9) {
         cerr << "pair-energy export does not reproduce original totalEnergy: "
              << setprecision(17) << exportedEnergy << " vs " << energy << endl;
-        delete et;
-        delete ft;
         return 1;
       }
     } else {
@@ -547,8 +547,6 @@ int main(int argc, char **argv) {
     delete pdb;
     if (!pairOutput.good() || !nonpairOutput.good()) {
       cerr << "failed while writing pair-energy output files" << endl;
-      delete et;
-      delete ft;
       return 1;
     }
   } else if (components.is_open()) {
@@ -563,15 +561,11 @@ int main(int argc, char **argv) {
     if (!components.good()) {
       cerr << "failed while writing component output file: " << componentFile
            << endl;
-      delete et;
-      delete ft;
       return 1;
     }
   }
   if (!isfinite(energy)) {
     cerr << "BRiQ produced a non-finite energy" << endl;
-    delete ft;
-    delete et;
     return 1;
   }
   if (!outputDirectory.empty()) {
@@ -579,7 +573,7 @@ int main(int argc, char **argv) {
     run << setprecision(17)
         << "{\n  \"program\": \"BRiQ_Energy\",\n"
         << "  \"version\": \"1.0\",\n"
-        << "  \"exporter_version\": \"0.2.1\",\n"
+        << "  \"exporter_version\": \"0.3.0\",\n"
         << "  \"source_version\": \"" << BRIQ_SOURCE_VERSION << "\",\n"
         << "  \"parameters\": {\n"
         << "    \"break_weight\": " << breakWeight << ",\n"
@@ -591,8 +585,6 @@ int main(int argc, char **argv) {
     run.close();
     if (!run.good()) {
       cerr << "cannot write run.json" << endl;
-      delete ft;
-      delete et;
       return 1;
     }
   }
@@ -600,6 +592,183 @@ int main(int argc, char **argv) {
     cerr << "pair_ownership " << (pdbOwnership ? "pdb" : "node") << endl;
   cerr << inputFile << " " << setprecision(17) << energy << endl;
 
-  delete et;
-  delete ft;
+  return 0;
+}
+
+struct BatchJob {
+  string input;
+  string output;
+};
+
+// Validate every job before loading tables or creating any job output.
+static bool readBatchJobs(const string &manifestPath, vector<BatchJob> &jobs) {
+  ifstream manifest(manifestPath.c_str());
+  if (!manifest) {
+    cerr << "Cannot open batch manifest: " << manifestPath << endl;
+    return false;
+  }
+  set<string> destinations;
+  string line;
+  size_t lineNumber = 0;
+  while (getline(manifest, line)) {
+    ++lineNumber;
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.empty()) continue;
+    size_t separator = line.find('\t');
+    if (separator == string::npos ||
+        line.find('\t', separator + 1) != string::npos) {
+      cerr << "Manifest line " << lineNumber
+           << ": expected PDB<TAB>OUTPUT_DIRECTORY (no header)" << endl;
+      return false;
+    }
+    BatchJob job = {line.substr(0, separator), line.substr(separator + 1)};
+    if (job.input.empty() || job.output.empty() ||
+        job.input[0] != '/' || job.output[0] != '/') {
+      cerr << "Manifest line " << lineNumber
+           << ": paths must be absolute container paths" << endl;
+      return false;
+    }
+    struct stat info;
+    if (stat(job.input.c_str(), &info) != 0 || !S_ISREG(info.st_mode)) {
+      cerr << "Cannot read batch PDB: " << job.input << endl;
+      return false;
+    }
+    ifstream input(job.input.c_str());
+    if (!input) {
+      cerr << "Cannot open batch PDB: " << job.input << endl;
+      return false;
+    }
+    while (job.output.size() > 1 && job.output.back() == '/') job.output.pop_back();
+    size_t slash = job.output.find_last_of('/');
+    string parent = slash == 0 ? "/" : job.output.substr(0, slash);
+    string name = job.output.substr(slash + 1);
+    if (name.empty() || name == "." || name == ".." ||
+        stat(parent.c_str(), &info) != 0 || !S_ISDIR(info.st_mode)) {
+      cerr << "Batch output parent must exist: " << job.output << endl;
+      return false;
+    }
+    char *resolvedParent = realpath(parent.c_str(), NULL);
+    if (resolvedParent == NULL) {
+      cerr << "Cannot resolve batch output parent: " << parent << endl;
+      return false;
+    }
+    job.output = string(resolvedParent) + "/" + name;
+    free(resolvedParent);
+    if (stat(job.output.c_str(), &info) == 0) {
+      if (!S_ISDIR(info.st_mode)) {
+        cerr << "Batch output is not a directory: " << job.output << endl;
+        return false;
+      }
+      char *resolved = realpath(job.output.c_str(), NULL);
+      if (resolved == NULL) return false;
+      job.output = resolved;
+      free(resolved);
+      DIR *directory = opendir(job.output.c_str());
+      if (directory == NULL) return false;
+      bool empty = true;
+      struct dirent *entry;
+      while ((entry = readdir(directory)) != NULL) {
+        string entryName(entry->d_name);
+        if (entryName != "." && entryName != "..") empty = false;
+      }
+      closedir(directory);
+      if (!empty) {
+        cerr << "Batch output directory must be empty: " << job.output << endl;
+        return false;
+      }
+    } else if (errno != ENOENT) {
+      cerr << "Cannot access batch output directory: " << job.output << endl;
+      return false;
+    }
+    if (!destinations.insert(job.output).second) {
+      cerr << "Duplicate batch output directory: " << job.output << endl;
+      return false;
+    }
+    jobs.push_back(job);
+  }
+  if (!manifest.eof()) {
+    cerr << "Failed while reading batch manifest" << endl;
+    return false;
+  }
+  if (jobs.empty()) {
+    cerr << "Batch manifest is empty" << endl;
+    return false;
+  }
+  return true;
+}
+
+static bool completeBatchOutput(const BatchJob &job) {
+  size_t separator = job.input.find_last_of('/');
+  string name = job.input.substr(separator + 1);
+  string stem = name.substr(0, name.find_last_of('.'));
+  const vector<string> expected = {
+    name, stem + ".briq", "pairs.csv", "nonpair.csv", "run.json"
+  };
+  for (size_t i = 0; i < expected.size(); ++i) {
+    ifstream file((job.output + "/" + expected[i]).c_str());
+    if (!file) {
+      cerr << "Missing batch output: " << job.output << "/" << expected[i] << endl;
+      return false;
+    }
+  }
+  return true;
+}
+
+static int runBatch(int argc, char **argv) {
+  if (argc != 3) {
+    cerr << "Usage: BRiQ_Energy --batch JOBS.tsv" << endl;
+    return 1;
+  }
+  vector<BatchJob> jobs;
+  if (!readBatchJobs(argv[2], jobs)) return 1;
+
+  char *directory = realpath(".", NULL);
+  if (directory == NULL) {
+    cerr << "Cannot resolve working directory" << endl;
+    return 1;
+  }
+  string initialDirectory(directory);
+  free(directory);
+
+  srand(0);
+  const chrono::steady_clock::time_point start = chrono::steady_clock::now();
+  cerr << "[batch] Loading shared energy tables" << endl;
+  EnergyTable tables;
+  cerr << "[batch] Tables ready in "
+       << chrono::duration<double>(chrono::steady_clock::now() - start).count()
+       << " s" << endl;
+
+  for (size_t index = 0; index < jobs.size(); ++index) {
+    cerr << "[batch " << index + 1 << "/" << jobs.size() << "] "
+         << jobs[index].input << endl;
+    vector<string> arguments = {
+      "BRiQ_Energy", jobs[index].input,
+      "--output-dir", jobs[index].output,
+      "--seed", "0", "--weights", "1", "1", "1",
+      "--pair-ownership", "pdb"
+    };
+    vector<char *> pointers;
+    for (size_t i = 0; i < arguments.size(); ++i) pointers.push_back(&arguments[i][0]);
+    pointers.push_back(NULL);
+    int status = runEnergy(static_cast<int>(arguments.size()), pointers.data(), &tables);
+    if (chdir(initialDirectory.c_str()) != 0) {
+      cerr << "Cannot restore batch working directory" << endl;
+      return 1;
+    }
+    if (status != 0 || !completeBatchOutput(jobs[index])) {
+      cerr << "Batch stopped at job " << index + 1 << endl;
+      return status != 0 ? status : 1;
+    }
+  }
+  return 0;
+}
+
+int main(int argc, char **argv) {
+  try {
+    if (argc > 1 && string(argv[1]) == "--batch") return runBatch(argc, argv);
+    return runEnergy(argc, argv);
+  } catch (const exception &error) {
+    cerr << "BRiQ_Energy failed: " << error.what() << endl;
+    return 1;
+  }
 }
