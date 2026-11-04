@@ -80,7 +80,7 @@ public:
 	bool* loopRevPoints;
 	bool* chainBreakPoints;
 
-	bool* nodeConnectMatrix;
+	bool* nodeConnectMatrix = NULL;
 
 	vector<int> freeNodeIDs; //nodes for rmsd calculation
 	vector<int> bulgeList;
@@ -89,13 +89,13 @@ public:
 
 	vector<set<int>> fixedGroups;
 
-	BRNode* pseudoNode;
+	BRNode* pseudoNode = NULL;
 
 
 	BaseRotamer** initRotList;
 
 	BRNode** nodes;
-	BRNode* rootNode;
+	BRNode* rootNode = NULL;
 
 	vector<BRConnection*> fixedConnectionList; //move fixed or child fixed
 	vector<BRConnection*> flexibleConnectionList; //could be changed during sampling
@@ -103,7 +103,7 @@ public:
 	vector<BRNode*> riboFlexibleNodes; //ribose rotamer could be changed during sampling
 
 
-	BRTreeInfo* initTreeInfo;
+	BRTreeInfo* initTreeInfo = NULL;
 
 	FragmentLibrary* fragLib;
 	BaseRotamerLib* rotLib;
@@ -113,30 +113,30 @@ public:
 	int* sepTable;
 
 
-	double* allBaseClashE;
-	double* tmpBaseClashE;
-	double* allBaseBaseE;
-	double* tmpBaseBaseE;
-	double* allBaseRiboseE;
-	double* tmpBaseRiboseE;
-	double* allBasePhoE;
-	double* tmpBasePhoE;
-	double* allRiboseRiboseE;
-	double* tmpRiboseRiboseE;
-	double* allRibosePhoE;
-	double* tmpRibosePhoE;
-	double* allPhoPhoE;
-	double* tmpPhoPhoE;
-	double* allRotE;
-	double* tmpRotE;
-	double* allRcE;
-	double* tmpRcE;
+	double* allBaseClashE = NULL;
+	double* tmpBaseClashE = NULL;
+	double* allBaseBaseE = NULL;
+	double* tmpBaseBaseE = NULL;
+	double* allBaseRiboseE = NULL;
+	double* tmpBaseRiboseE = NULL;
+	double* allBasePhoE = NULL;
+	double* tmpBasePhoE = NULL;
+	double* allRiboseRiboseE = NULL;
+	double* tmpRiboseRiboseE = NULL;
+	double* allRibosePhoE = NULL;
+	double* tmpRibosePhoE = NULL;
+	double* allPhoPhoE = NULL;
+	double* tmpPhoPhoE = NULL;
+	double* allRotE = NULL;
+	double* tmpRotE = NULL;
+	double* allRcE = NULL;
+	double* tmpRcE = NULL;
 
 	EnergyTable* et;
 
 	BRFoldingTree(const string& inputFile, EnergyTable* et,
         BaseRotamerLib* sharedRotamers = NULL, FragmentLibrary* sharedFragments = NULL,
-        ScoringProfile* profile = NULL);
+        ScoringProfile* profile = NULL, bool scoringOnly = false);
 
 	BRFoldingTree(const string& inputFile);
 	void randInit();

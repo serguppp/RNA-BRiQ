@@ -330,7 +330,8 @@ static bool startOutputDirectory(const string &source, const string &directory,
 
 static int runEnergy(int argc, char **argv, EnergyTable *sharedTables = NULL,
                      double *totalResult = NULL, BaseRotamerLib *rotamers = NULL,
-                     FragmentLibrary *fragments = NULL, ScoringProfile *profile = NULL) {
+                     FragmentLibrary *fragments = NULL, ScoringProfile *profile = NULL,
+                     bool scoringOnly = false) {
   if (argc > 1 && string(argv[1]) == "--prepare") {
     if (argc != 4) {
       printHelp();
@@ -478,7 +479,7 @@ static int runEnergy(int argc, char **argv, EnergyTable *sharedTables = NULL,
   unique_ptr<EnergyTable> ownedTables;
   if (sharedTables == NULL) ownedTables.reset(new EnergyTable());
   EnergyTable *et = sharedTables != NULL ? sharedTables : ownedTables.get();
-  unique_ptr<BRFoldingTree> ownedTree(new BRFoldingTree(inputFile, et, rotamers, fragments, profile));
+  unique_ptr<BRFoldingTree> ownedTree(new BRFoldingTree(inputFile, et, rotamers, fragments, profile, scoringOnly));
   BRFoldingTree *ft = ownedTree.get();
   const auto scoreStart = chrono::steady_clock::now();
   double energy;
@@ -844,7 +845,7 @@ static string csvQuoted(const string &value) {
 }
 
 static int runBatchTotal(int argc, char **argv) {
-  string engine = "shared";
+  string engine = "score";
   bool profiling = false;
   if (argc < 4) {
     cerr << "Usage: BRiQ_Energy --batch-total JOBS.tsv TOTALS.csv [--engine legacy|shared] [--profile]" << endl;
@@ -856,8 +857,8 @@ static int runBatchTotal(int argc, char **argv) {
     else if (option == "--engine" && arg+1 < argc) engine = argv[++arg];
     else { cerr << "Unknown batch-total option: " << option << endl; return 1; }
   }
-  if (engine != "legacy" && engine != "shared") {
-    cerr << "Engine must be legacy or shared" << endl;
+  if (engine != "legacy" && engine != "shared" && engine != "score") {
+    cerr << "Engine must be legacy, shared or score" << endl;
     return 1;
   }
   vector<string> jobs;
@@ -894,10 +895,8 @@ static int runBatchTotal(int argc, char **argv) {
   EnergyTable tables;
   unique_ptr<BaseRotamerLib> sharedRotamers;
   unique_ptr<FragmentLibrary> sharedFragments;
-  if (engine == "shared") {
-    sharedRotamers.reset(new BaseRotamerLib());
-    sharedFragments.reset(new FragmentLibrary(sharedRotamers.get()));
-  }
+  if (engine != "legacy") sharedRotamers.reset(new BaseRotamerLib());
+  if (engine == "shared") sharedFragments.reset(new FragmentLibrary(sharedRotamers.get()));
   cerr << "[profile-resources] engine=" << engine << " seconds="
        << chrono::duration<double>(chrono::steady_clock::now()-resourceStart).count() << endl;
   for (size_t index = 0; index < jobs.size(); ++index) {
@@ -921,7 +920,7 @@ static int runBatchTotal(int argc, char **argv) {
     pointers.push_back(NULL);
     double energy = numeric_limits<double>::quiet_NaN();
     int status = runEnergy(static_cast<int>(arguments.size()), pointers.data(),
-                           &tables, &energy, sharedRotamers.get(), sharedFragments.get(), &profile);
+                           &tables, &energy, sharedRotamers.get(), sharedFragments.get(), &profile, engine == "score");
     if (profiling) cerr << "[profile] " << index << "," << preparationSeconds << ","
        << profile.rotamerSeconds << "," << profile.fragmentSeconds << ","
        << profile.treeSeconds << "," << profile.scoreSeconds << endl;

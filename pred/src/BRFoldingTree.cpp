@@ -235,7 +235,7 @@ BRTreeInfo::~BRTreeInfo() {
 }
 
 BRFoldingTree::BRFoldingTree(const string& inputFile, EnergyTable* et,
-    BaseRotamerLib* sharedRotamers, FragmentLibrary* sharedFragments, ScoringProfile* profile){
+    BaseRotamerLib* sharedRotamers, FragmentLibrary* sharedFragments, ScoringProfile* profile, bool scoringOnly){
     const auto constructionStart = chrono::steady_clock::now();
 
 	this->et = et;
@@ -243,8 +243,8 @@ BRFoldingTree::BRFoldingTree(const string& inputFile, EnergyTable* et,
     ownsRotamerLibrary = sharedRotamers == NULL;
     rotLib = sharedRotamers != NULL ? sharedRotamers : new BaseRotamerLib();
     const auto rotamerReady = chrono::steady_clock::now();
-    ownsFragmentLibrary = sharedFragments == NULL;
-    fragLib = sharedFragments != NULL ? sharedFragments : new FragmentLibrary(rotLib);
+    ownsFragmentLibrary = !scoringOnly && sharedFragments == NULL;
+    fragLib = scoringOnly ? NULL : (sharedFragments != NULL ? sharedFragments : new FragmentLibrary(rotLib));
     const auto fragmentsReady = chrono::steady_clock::now();
     if (profile != NULL) {
         profile->rotamerSeconds = chrono::duration<double>(rotamerReady-constructionStart).count();
@@ -357,6 +357,7 @@ BRFoldingTree::BRFoldingTree(const string& inputFile, EnergyTable* et,
 
 	this->sepTable = new int[seqLen*seqLen];
 
+    if (!scoringOnly) {
 	this->allBaseClashE = new double[seqLen*seqLen];
 	this->tmpBaseClashE = new double[seqLen*seqLen];
 	this->allBaseBaseE = new double[seqLen*seqLen];
@@ -399,6 +400,7 @@ BRFoldingTree::BRFoldingTree(const string& inputFile, EnergyTable* et,
 			tmpPhoPhoE[pi] = 0;
 		}
 	}
+    }
 
 	RNABaseName rn;
 	for(unsigned int i=0;i<seqLen;i++){
@@ -434,6 +436,7 @@ BRFoldingTree::BRFoldingTree(const string& inputFile, EnergyTable* et,
 
 	}
 	delete [] groupIndex;
+    for (size_t i=0; i<baseList.size(); ++i) delete baseList[i];
 
 
 	for(int i=0;i<seqLen-1;i++){
@@ -458,6 +461,18 @@ BRFoldingTree::BRFoldingTree(const string& inputFile, EnergyTable* et,
 			else sepTable[ij] = 3;
 		}
 	}
+
+    if (scoringOnly) {
+        // Fixed 1/1/1 scoring does not depend on the sampling tree or loop cuts.
+        for (int i=0; i<seqLen; ++i) {
+            this->chainBreakPoints[i] = false;
+            loopRevPoints[i] = false;
+        }
+        updatePhoGroups();
+        if (profile != NULL)
+            profile->treeSeconds = chrono::duration<double>(chrono::steady_clock::now()-fragmentsReady).count();
+        return;
+    }
 
 	for(int i=0;i<fixedList.size();i++) {
 		this->fixed[fixedList[i]] = true;

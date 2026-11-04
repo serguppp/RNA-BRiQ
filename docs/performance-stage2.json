@@ -1,0 +1,25 @@
+{
+  "score": {
+    "wall_seconds": 37.76138909999281,
+    "resources_s": 27.772,
+    "max_energy_difference": 0.0,
+    "molecules": {
+      "1RNA": {
+        "prepare_s": 0.023182937375,
+        "rotamers_s": 7.88125e-08,
+        "fragments_s": 1.28375e-07,
+        "tree_s": 0.00686536503125,
+        "energy_s": 0.00200268921875,
+        "mean_job_s": 0.0320511988125
+      },
+      "1EHZ": {
+        "prepare_s": 0.11675585790625,
+        "rotamers_s": 9.421875e-08,
+        "fragments_s": 1.546875e-07,
+        "tree_s": 0.0129274606875,
+        "energy_s": 0.0068594939375,
+        "mean_job_s": 0.1365430614375
+      }
+    }
+  }
+}

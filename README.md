@@ -312,3 +312,13 @@ per-stage timings. `docs/performance-stage1.json` records the initial 16-job
 measurement (eight 1RNA and eight 1EHZ mutants): 92.318 s legacy vs 35.230 s shared,
 with zero energy difference. Another scoring process was running concurrently;
 these are measurements under that load, not isolated throughput guarantees.
+
+`--engine score` (the total-only default) omits fragment libraries, sampling
+connections, initial tree copies and unused energy-cache allocation/evaluation.
+It still builds the same standardized bases and phosphate groups, and evaluates
+the full 1/1/1 energy. It is specific to the fixed equal weights of batch-total;
+it does not change the existing refinement/prediction constructors.
+The 64-variant measurement in `docs/performance-stage2.json` took 37.761 s,
+including 27.772 s of resource initialization. The 16 overlapping legacy cases
+matched exactly. Mean per-job preparation/tree/energy costs were about 0.032 s
+for 1RNA and 0.137 s for 1EHZ under the observed machine load.
