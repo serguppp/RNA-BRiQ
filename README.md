@@ -5,7 +5,9 @@ remaining backbone and local terms.
 
 This fork builds on [RNA-BRiQ](https://github.com/Jian-Zhan/RNA-BRiQ) and
 [Tomasz Żok's energy scorer](https://github.com/tzok/RNA-BRiQ).
-It preserves the original scoring formulas and adds CSV export and validation.
+It retains the scoring formulas and adds CSV export and validation.
+Phosphate construction includes a [memory-safety correction](docs/performance.md);
+recompute native and mutant energies together when upgrading older runs.
 It does not calculate frustration indices.
 
 ## Quick start
@@ -35,7 +37,7 @@ Diagnostics go to the console. A failed run may leave partial output.
 
 ### Docker on Windows
 
-If you have the locally built `briq:output-dir` image, run this in PowerShell.
+After building the current `briq:batch` image (instructions below), run this in PowerShell.
 Change the input path for each structure:
 
 ```powershell
@@ -49,11 +51,11 @@ New-Item -ItemType Directory -Force -Path $out | Out-Null
 docker run --rm `
   --mount "type=bind,source=$pdb,target=/data/$name,readonly" `
   --mount "type=bind,source=$out,target=/output" `
-  briq:output-dir `
+  briq:batch `
   BRiQ_Energy "/data/$name" --output-dir /output --seed 0
 ```
 
-`briq:output-dir` is a local image tag, not a published container image.
+`briq:batch` is a local image tag, not a published container image.
 
 ## Batch scoring
 
@@ -106,10 +108,10 @@ docker run --rm `
   briq:batch BRiQ_Energy --batch /work/jobs.tsv
 ```
 
-Run the integration regression against the previous single-process image:
+Compare separate processes with a batch using the same corrected image:
 
 ```powershell
-python tests/test_batch_energy.py --docker briq:batch --reference briq:output-dir
+python tests/test_batch_energy.py --docker briq:batch
 python tests/test_output_directory.py --docker briq:batch
 ```
 
@@ -150,20 +152,66 @@ indices start at zero and paths are CSV-escaped. Connect contact IDs and mutatio
 identities to these indices in the caller instead of parsing PDB filenames.
 
 One set of potential tables is loaded. Each job uses seed 0 and scoring weights
-1/1/1, with the same preparation and total-energy function as ordinary scoring.
+1/1/1, with equivalent sequence/connectivity preparation and total-energy terms.
 Preparation uses a private temporary directory inside the container, removed
 after each job. The mode does not create per-variant output directories, copy
 PDBs into outputs, annotate exported contacts, or write pair/nonpair/run files.
 It still prepares and scores each entire structure. Source version and fixed
 parameters are written to stderr; retain that log for provenance.
 
-The CSV is flushed after every completed job. On a runtime failure it can contain
-only a prefix of results: check the process exit status and expected row count.
-There is no automatic resume or overwrite. Existing full-export modes are retained
+The CSV is flushed every 16 jobs by default (`--flush-every 1` restores per-job
+flushing). A `.state` sidecar records input fingerprints and checksums of flushed
+CSV prefixes. On a runtime failure the CSV can contain only a prefix of results:
+check the process exit status and expected row count. Existing results are never
+overwritten; explicit resume options are described below. Existing full-export modes are retained
 for native contact discovery and detailed inspection of selected variants.
 
 ```powershell
 python tests/test_batch_total.py --docker briq:batch
+```
+
+### Engines and profiling
+
+`--batch-total` accepts `--engine`:
+
+| Engine | Behavior |
+| --- | --- |
+| `legacy` | Reload libraries and build the original sampling tree per job |
+| `shared` | Share rotamer/fragment libraries while retaining the original tree |
+| `score` | Skip sampling setup and evaluate every total-energy term |
+| `incremental` (default) | Reuse terms whose geometry, identities and connectivity are unchanged |
+
+All engines use seed 0 and outer weights 1/1/1. The incremental engine invalidates
+all interactions of changed nodes, including their environment and neighboring
+phosphates. It preserves total energy and accumulation order; it does not replace
+the total score with the energy of only the mutated pair. Detailed native contact
+discovery continues to use the full exporter.
+
+Add `--profile` to log per-job preparation, library loading, tree setup and energy
+calculation times. Resource initialization is logged separately. See the measured
+[performance and validation report](docs/performance.md). A reusable benchmark is
+`tests/benchmark_scoring.py --workspace WORKSPACE --image briq:batch`.
+
+### Resume a total-only batch
+
+```text
+BRiQ_Energy --batch-total JOBS.tsv TOTALS.csv --resume
+```
+
+Keep the same image, parameter tables, input files, manifest and `.state` sidecar.
+The sidecar checks source version, engine, fixed parameters, input contents and
+committed CSV rows, using non-cryptographic FNV-1a checksums for accidental changes.
+The default flush/checkpoint interval is 16 jobs (`--flush-every 1` writes each job).
+Any valid uncommitted tail is recomputed and compared before new rows are appended.
+A completed verified batch exits without loading tables. Invalid/truncated CSVs,
+changed inputs or altered committed energies are rejected without silent repair.
+
+For older CSVs without `.state`, use `--resume-verify`. It recomputes and checks
+**all existing energies** within `1e-9` before creating a checkpoint or appending.
+The existing prefix is preserved; incompatible scores stop the run.
+
+```powershell
+python tests/test_resume.py --image briq:batch
 ```
 
 ## Build from source
@@ -261,15 +309,26 @@ If `--nonpair` is omitted during pair export, its filename defaults to
 
 ## Validation
 
+The corrected scorer fixes an invalid phosphate-library read that could make
+older scores depend on memory layout. Recompute native and mutant scores with
+one corrected image; do not mix them with historical results. See the
+[correctness and performance report](docs/performance.md).
+
+
 Run from the repository root with Docker and Python installed:
 
 ```bash
 # Five-file output, score reconstruction and overwrite protection
-python tests/test_output_directory.py --docker briq:output-dir
+python tests/test_output_directory.py --docker briq:batch
 
-# Compare exported components against a separately built original BRiQ scorer
-python tests/test_pair_energy_validation.py --docker briq:output-dir --build-reference
+# Current full-export/total-only agreement and checkpoint tests
+python tests/test_batch_total.py --docker briq:batch
+python tests/test_resume.py --image briq:batch
 ```
+
+`test_pair_energy_validation.py` and its frozen reference values document the
+historical exporter validation against unmodified upstream BRiQ. That upstream
+reference contains the phosphate bug and is not an oracle for corrected scores.
 
 The tests use the bundled 1RNA and 1EHZ structures. Detailed results and known
 limitations are in the [validation report](docs/pair-energy-validation.md).
@@ -295,47 +354,3 @@ base-base knowledge-based potential.*
 Upstream states that the software is free for non-commercial users.
 For questions about upstream usage terms, contact Peng Xiong at
 pengx_a@163.com.
-
-### Scoring engines and profiling
-
-Total-only batches accept `--engine legacy|shared` and `--profile`.
-`legacy` reloads rotamer/fragment libraries per structure; `shared` (default)
-loads them once per batch. Both retain the original full tree and energy function.
-Profile stderr rows are `job_index,prepare_s,rotamers_s,fragments_s,tree_s,energy_s`.
-The resource initialization time is logged separately. Scoring weights and seed
-remain 1/1/1 and 0. Shared libraries are borrowed by each tree; fallback rotamers
-are copied so that destroying a tree cannot delete shared library entries.
-
-`tests/benchmark_scoring.py --workspace WORKSPACE --image IMAGE` compares engines
-on a prepared `jobs-benchmark.tsv`, checks every energy within `1e-9`, and records
-per-stage timings. `docs/performance-stage1.json` records the initial 16-job
-measurement (eight 1RNA and eight 1EHZ mutants): 92.318 s legacy vs 35.230 s shared,
-with zero energy difference. Another scoring process was running concurrently;
-these are measurements under that load, not isolated throughput guarantees.
-
-`--engine score` (the total-only default) omits fragment libraries, sampling
-connections, initial tree copies and unused energy-cache allocation/evaluation.
-It still builds the same standardized bases and phosphate groups, and evaluates
-the full 1/1/1 energy. It is specific to the fixed equal weights of batch-total;
-it does not change the existing refinement/prediction constructors.
-The 64-variant measurement in `docs/performance-stage2.json` took 37.761 s,
-including 27.772 s of resource initialization. The 16 overlapping legacy cases
-matched exactly. Mean per-job preparation/tree/energy costs were about 0.032 s
-for 1RNA and 0.137 s for 1EHZ under the observed machine load.
-
-`--engine incremental` reuses individual interaction terms only when all relevant
-node coordinates, base identity, connectivity, frame matrices and separation
-indices are numerically identical. Every changed node invalidates its interactions
-with the entire environment, including directed and neighboring phosphate terms.
-It returns the same full total energy, with the original accumulation order.
-No distance tolerance or local-contact approximation is introduced.
-
-Both `score` and `incremental` use fast preparation without repeated secondary
-structure annotation. Valid residues and physical/chain breaks are retained;
-secondary structure only controls sampling and is irrelevant to equal-weight
-scoring. Detailed native contact discovery continues to use the full exporter.
-
-All 64 test variants matched previous preparation and incremental/full scoring
-within `1e-9` (observed difference zero). Under the measured load, fast preparation
-plus incremental scoring averaged 0.014 s/job for 1RNA and 0.024 s/job for 1EHZ;
-resource loading was about 29 s. See `docs/performance-stage3.json`.

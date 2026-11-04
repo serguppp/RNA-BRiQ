@@ -1,0 +1,94 @@
+{
+  "legacy": {
+    "wall_seconds": 90.13593180000021,
+    "resources_s": 30.1305,
+    "max_energy_difference": 0.0,
+    "molecules": {
+      "1RNA": {
+        "prepare_s": 0.024995181625,
+        "rotamers_s": 0.0213745205,
+        "fragments_s": 3.5808483205,
+        "tree_s": 0.01808893,
+        "energy_s": 0.001075186875,
+        "mean_job_s": 3.6463821395
+      },
+      "1EHZ": {
+        "prepare_s": 0.108435445125,
+        "rotamers_s": 0.018030147125,
+        "fragments_s": 3.1204469442500002,
+        "tree_s": 0.031735731875,
+        "energy_s": 0.004958317375,
+        "mean_job_s": 3.2836065857500003
+      }
+    }
+  },
+  "shared": {
+    "wall_seconds": 37.51363659999993,
+    "resources_s": 33.205,
+    "max_energy_difference": 0.0,
+    "molecules": {
+      "1RNA": {
+        "prepare_s": 0.025624025124999998,
+        "rotamers_s": 4e-08,
+        "fragments_s": 2.625e-08,
+        "tree_s": 0.011232092249999999,
+        "energy_s": 0.00121548075,
+        "mean_job_s": 0.038071664374999994
+      },
+      "1EHZ": {
+        "prepare_s": 0.109382624,
+        "rotamers_s": 4.775e-08,
+        "fragments_s": 2.8999999999999998e-08,
+        "tree_s": 0.024357838125,
+        "energy_s": 0.00528594425,
+        "mean_job_s": 0.139026483125
+      }
+    }
+  },
+  "score": {
+    "wall_seconds": 31.926795900000116,
+    "resources_s": 28.7339,
+    "max_energy_difference": 0.0,
+    "molecules": {
+      "1RNA": {
+        "prepare_s": 0.007830815,
+        "rotamers_s": 4.625e-08,
+        "fragments_s": 1.51625e-07,
+        "tree_s": 0.00667985,
+        "energy_s": 0.00155382625,
+        "mean_job_s": 0.016064689125
+      },
+      "1EHZ": {
+        "prepare_s": 0.012060725,
+        "rotamers_s": 3.875e-08,
+        "fragments_s": 1.4275e-07,
+        "tree_s": 0.0128587875,
+        "energy_s": 0.0056252212499999996,
+        "mean_job_s": 0.03054491525
+      }
+    }
+  },
+  "incremental": {
+    "wall_seconds": 33.962541199999805,
+    "resources_s": 30.3175,
+    "max_energy_difference": 0.0,
+    "molecules": {
+      "1RNA": {
+        "prepare_s": 0.00870771125,
+        "rotamers_s": 4.275e-08,
+        "fragments_s": 1.49e-07,
+        "tree_s": 0.00802910125,
+        "energy_s": 0.001627957875,
+        "mean_job_s": 0.018364962125
+      },
+      "1EHZ": {
+        "prepare_s": 0.01292945,
+        "rotamers_s": 4.1375e-08,
+        "fragments_s": 1.55375e-07,
+        "tree_s": 0.014320725,
+        "energy_s": 0.0031435431250000003,
+        "mean_job_s": 0.030393914875
+      }
+    }
+  }
+}

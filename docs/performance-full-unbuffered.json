@@ -1,0 +1,58 @@
+{
+  "1RNA": {
+    "score": {
+      "jobs": 960,
+      "wall_seconds": 79.28500129998429,
+      "resource_seconds": 31.6576,
+      "max_energy_difference": 0.0,
+      "profile_sums": [
+        6.855146871,
+        4.6235999999999996e-05,
+        0.000242267,
+        6.898965685,
+        1.929107475
+      ]
+    },
+    "incremental": {
+      "jobs": 960,
+      "wall_seconds": 62.639824600017164,
+      "resource_seconds": 30.2173,
+      "max_energy_difference": 0.0,
+      "profile_sums": [
+        7.161555577,
+        4.4364e-05,
+        0.000214796,
+        6.704900504,
+        0.62216407
+      ]
+    }
+  },
+  "1EHZ": {
+    "score": {
+      "jobs": 2768,
+      "wall_seconds": 235.01491209998494,
+      "resource_seconds": 31.3784,
+      "max_energy_difference": 0.0,
+      "profile_sums": [
+        43.007002047,
+        0.00011666999999999999,
+        0.000707213,
+        38.716392621,
+        16.589847993
+      ]
+    },
+    "incremental": {
+      "jobs": 2768,
+      "wall_seconds": 130.00966379995225,
+      "resource_seconds": 25.6371,
+      "max_energy_difference": 0.0,
+      "profile_sums": [
+        27.656844052,
+        0.000117583,
+        0.000625037,
+        35.204062344,
+        2.619034255
+      ]
+    }
+  }
+}
