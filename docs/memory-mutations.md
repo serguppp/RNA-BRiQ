@@ -16,6 +16,8 @@ identities are rejected. The geometry cache must not change reference chain
 connectivity. This is an equal-weight, seed-zero scorer, matching the existing
 total-batch defaults, with PDB phosphate ownership for native CSV exports.
 
+For the separate Python application, see the [code to copy into briq.py and pipeline.py](python-frustratometer-integration.md).
+
 ## Geometry supplied by the caller
 
 The TSV is one file with this exact header:
@@ -108,8 +110,8 @@ preparation/export and Docker execution, excluding interpreter startup:
 
 | Structure | Contacts | Variants | Complete run | Library loading | Variant loop |
 |---|---:|---:|---:|---:|---:|
-| 1RNA | 60 | 960 | 30.52 s | 27.84 s | 0.14 s |
-| 1EHZ | 173 | 2,768 | 31.76 s | 27.86 s | 0.80 s |
+| 1RNA | 60 | 960 | 29.60 s | 26.84 s | 0.16 s |
+| 1EHZ | 173 | 2,768 | 31.91 s | 27.77 s | 0.80 s |
 
 The previous measured 1EHZ cache/PDB pipeline took 251.12 s: approximately
 7.9 times slower than this run. The 1RNA historical 2–2.5 minute estimate was
