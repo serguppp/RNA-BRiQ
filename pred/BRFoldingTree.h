@@ -22,6 +22,7 @@
 #include "geometry/RMSD.h"
 #include "pred/BaseMoveLibrary.h"
 #include <iostream>
+#include <array>
 #include <set>
 #include <stdio.h>
 
@@ -254,7 +255,8 @@ public:
 	double totalEnergy(double breakCTWT, double connectWT,double clashWT, double shift, bool verbose, ostream* componentOutput);
 	double totalEnergy(double breakCTWT, double connectWT, double clashWT, double shift, bool verbose,
 		ostream* pairOutput, ostream* nonpairOutput,
-		const vector<PairEnergyMetadata>& residueMetadata, const vector<string>& contactTypes, bool pdbOwnership = true);
+		const vector<PairEnergyMetadata>& residueMetadata, const vector<string>& contactTypes, bool pdbOwnership = true,
+        std::array<double,9>* componentSums = NULL);
 
 	void printDetailEnergy();
 

@@ -71,6 +71,7 @@ pairs.csv
 nonpair.csv
 run.json
 contact_variants.csv    # all 16 energies per selected reference contact
+energy_components.csv  # molecular component sums: reference + all variants
 mutation_run.json      # completion metadata and timings
 ```
 
@@ -86,6 +87,9 @@ or index definition are changed. Output is written as `.tmp` and finalized only
 after scoring succeeds; `mutation_run.json` records a successful complete run.
 This new mode deliberately refuses existing results and does not implement
 resume. The existing `--batch-total` checkpoint/resume interface is unchanged.
+
+The current mode also writes [molecule-wide component sums](energy-components.md)
+without changing the contact-variant CSV schema or Python invocation.
 
 ## Validation
 

@@ -159,6 +159,20 @@ class MutationPhosphates {
     size_t size() const { return links.size(); }
 };
 
+// Emit molecule-wide sums; the seven identity fields join variant rows to
+// contact_variants.csv. The reference row has index -1 and empty identity fields.
+static void writeEnergySums(ostream& out, const string& state, long index,
+                            const vector<string>& identity, const EnergySums& sums, double total) {
+    if (identity.size()!=7 || !sums.agrees(total)) throw runtime_error("Invalid energy component row");
+    out<<state<<","<<index;
+    for (const string& field : identity) out<<","<<csvQuoted(field);
+    out<<setprecision(17)<<","<<sums.bb<<","<<sums.bo<<","<<sums.oo<<","<<sums.clash
+       <<","<<sums.pairTotal()<<","<<sums.baseRibose<<","<<sums.basePhosphate
+       <<","<<sums.ribosePhosphate<<","<<sums.rotamer<<","<<sums.phosphate
+       <<","<<sums.nonpairTotal()<<","<<total<<"\n";
+    if (!out) throw runtime_error("Cannot write energy components");
+}
+
 static int runMutationTotal(int argc, char** argv) {
     const auto started=chrono::steady_clock::now();
     if (argc<5 || argc>6 || (argc==6 && string(argv[5])!="--verify-full")) {
@@ -222,6 +236,10 @@ static int runMutationTotal(int argc, char** argv) {
             throw runtime_error("Reference scoring failed");
     }
     if (tree->seqLen!=static_cast<int>(bases.size())) throw runtime_error("Reference length mismatch");
+    IncrementalEnergy incremental;
+    EnergySums nativeSums;
+    const double checkedNative=incremental.score(*tree,&nativeSums);
+    if (fabs(checkedNative-nativeEnergy)>1e-9) throw runtime_error("Native component scorer mismatch");
     const auto cacheStart=chrono::steady_clock::now();
     RNABaseLib standardizer;
     map<MutationKey,CachedMutationNode> nodes;
@@ -242,12 +260,18 @@ static int runMutationTotal(int argc, char** argv) {
     const double cacheSeconds=chrono::duration<double>(chrono::steady_clock::now()-cacheStart).count();
     MutationNodeGuard guard(*tree);
     MutationPhosphates phosphates;
-    IncrementalEnergy incremental;
     vector<int> ids(tree->seqLen);
     const string temporary=output+"/contact_variants.csv.tmp";
     ofstream totals(temporary.c_str());
     if (!totals) throw runtime_error("Cannot create variant totals");
     totals<<setprecision(17)<<"chain_i,residue_i,chain_j,residue_j,contact_type,base_i,base_j,native_E_total,E_total,delta_E_total\n";
+    const string componentsTemporary=output+"/energy_components.csv.tmp";
+    ofstream components(componentsTemporary.c_str());
+    if (!components) throw runtime_error("Cannot create energy component summary");
+    components<<"state,variant_index,chain_i,residue_i,chain_j,residue_j,contact_type,base_i,base_j,"
+              "E_bb,E_bo,E_oo,E_clash,E_pair,E_base_ribose,E_base_phosphate,E_ribose_phosphate,"
+              "E_rotamer,E_phosphate_local,E_nonpair,E_total\n";
+    writeEnergySums(components,"reference",-1,vector<string>(7,""),nativeSums,nativeEnergy);
     const auto variantsStart=chrono::steady_clock::now();
     size_t count=0;
     for (size_t contact=0;contact<contacts.size();++contact) {
@@ -263,12 +287,19 @@ static int runMutationTotal(int argc, char** argv) {
             tree->nodes[j]=nodes.at(second).node.get(); ids[j]=nodeIds.at(second);
             tree->seq[i]=tree->nodes[i]->baseType; tree->seq[j]=tree->nodes[j]->baseType;
             phosphates.update(*tree,ids);
-            const double energy=incremental.score(*tree);
+            EnergySums sums;
+            const double energy=incremental.score(*tree,&sums);
             if (!isfinite(energy)) throw runtime_error("Non-finite mutant energy");
             if (verify) {
                 // Independently rebuild every phosphate and evaluate all terms.
                 tree->updatePhoGroups();
-                double full=tree->totalEnergy(1,1,1,0,false);
+                std::array<double,9> fullSums;
+                double full=tree->totalEnergy(1,1,1,0,false,NULL,NULL,
+                    vector<PairEnergyMetadata>(),vector<string>(),true,&fullSums);
+                const auto cachedSums=sums.values();
+                for (size_t component=0;component<fullSums.size();++component)
+                    if (!isfinite(fullSums[component]) || fabs(fullSums[component]-cachedSums[component])>1e-9)
+                        throw runtime_error("Full/memory component mismatch at variant " + to_string(count));
                 if (!isfinite(full) || fabs(full-energy)>1e-9)
                     throw runtime_error("Full/memory score mismatch at variant " + to_string(count));
             }
@@ -277,6 +308,9 @@ static int runMutationTotal(int argc, char** argv) {
                 <<csvQuoted(contactTypes[contact])<<","<<a<<","<<b<<","<<nativeEnergy<<","
                 <<energy<<","<<energy-nativeEnergy<<"\n";
             if (!totals) throw runtime_error("Cannot write mutant energy");
+            writeEnergySums(components,"variant",count,
+                {bases[i]->chainID,bases[i]->baseID,bases[j]->chainID,bases[j]->baseID,
+                 contactTypes[contact],string(1,a),string(1,b)},sums,energy);
             ++count;
         }
     }
@@ -284,12 +318,16 @@ static int runMutationTotal(int argc, char** argv) {
     totals.close();
     if (!totals.good() || rename(temporary.c_str(),(output+"/contact_variants.csv").c_str())!=0)
         throw runtime_error("Cannot finalize mutant totals");
+    components.close();
+    if (!components.good() || rename(componentsTemporary.c_str(),(output+"/energy_components.csv").c_str())!=0)
+        throw runtime_error("Cannot finalize energy components");
     const double variantsSeconds=chrono::duration<double>(chrono::steady_clock::now()-variantsStart).count();
     ofstream report((output+"/mutation_run.json").c_str());
     report<<setprecision(17)<<"{\n  \"source_version\": \""<<BRIQ_SOURCE_VERSION<<"\",\n"
         <<"  \"engine\": \"memory\",\n  \"geometry_protocol\": \"supplied_coordinates\",\n"
         <<"  \"seed\": 0,\n  \"weights\": [1, 1, 1],\n"
         <<"  \"input_fingerprint\": \""<<fingerprint<<"\",\n"
+        <<"  \"energy_components_file\": \"energy_components.csv\",\n"
         <<"  \"contacts\": "<<contacts.size()<<",\n  \"variants\": "<<count<<",\n"
         <<"  \"native_energy\": "<<nativeEnergy<<",\n"
         <<"  \"verify_full\": "<<(verify ? "true" : "false")<<",\n"

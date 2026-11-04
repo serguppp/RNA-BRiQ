@@ -6020,7 +6020,8 @@ static string csvField(const string& value){
 
 double BRFoldingTree::totalEnergy(double breakCTWT, double connectWT, double clashWT, double shift, bool verbose,
 		ostream* pairOutput, ostream* nonpairOutput,
-		const vector<PairEnergyMetadata>& residueMetadata, const vector<string>& contactTypes, bool pdbOwnership){
+		const vector<PairEnergyMetadata>& residueMetadata, const vector<string>& contactTypes, bool pdbOwnership,
+        std::array<double,9>* componentSums){
 	if((pairOutput != NULL || nonpairOutput != NULL) &&
 		(residueMetadata.size() != (size_t)seqLen || contactTypes.size() != (size_t)seqLen*(size_t)seqLen)){
 		throw invalid_argument("BRiQ energy export metadata does not match the input sequence length");
@@ -6168,6 +6169,21 @@ double BRFoldingTree::totalEnergy(double breakCTWT, double connectWT, double cla
 				<< parts.ribosePhosphate << "," << parts.rotamer << "," << parts.phosphate << "," << nonpairTotal << "\n";
 		}
 	}
+
+    if(componentSums != NULL) {
+        componentSums->fill(0.0);
+        auto& sums=*componentSums;
+        for(int i=0;i<seqLen;++i) for(int j=i+1;j<seqLen;++j) {
+            const EnergyParts& part=pairs[(size_t)i*seqLen+j];
+            sums[0]+=part.baseBase; sums[1]+=part.baseOxygen;
+            sums[2]+=part.otherOxygen; sums[3]+=part.clash;
+        }
+        for(int i=0;i<seqLen;++i) {
+            sums[4]+=local[i].baseRibose; sums[5]+=local[i].basePhosphate;
+            sums[6]+=local[i].ribosePhosphate; sums[7]+=local[i].rotamer;
+            sums[8]+=local[i].phosphate;
+        }
+    }
 
 	return total;
 }

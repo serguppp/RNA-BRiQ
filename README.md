@@ -313,7 +313,8 @@ Use `BRiQ_Energy --mutate-total reference.pdb geometry.tsv output` to score
 native contacts and all their 16 A/C/G/U substitutions in one process.
 The caller supplies one cache of residue geometries; BRiQ reuses its potential,
 node and phosphate calculations. It returns full molecular energies and the
-native export. See [input format, results and measured timings](docs/memory-mutations.md).
+native export, plus [component sums for the reference and every variant](docs/energy-components.md).
+See [input format, results and measured timings](docs/memory-mutations.md).
 
 ## Validation
 

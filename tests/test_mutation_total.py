@@ -36,8 +36,54 @@ def compare(actual, expected):
     return {"contacts": len(groups), "variants": len(actual), "max_difference": largest}
 
 
+COMPONENT_COLUMNS = [
+    "E_bb",
+    "E_bo",
+    "E_oo",
+    "E_clash",
+    "E_pair",
+    "E_base_ribose",
+    "E_base_phosphate",
+    "E_ribose_phosphate",
+    "E_rotamer",
+    "E_phosphate_local",
+    "E_nonpair",
+    "E_total",
+]
+
+
+def validate_components(output):
+    identity = ["chain_i", "residue_i", "chain_j", "residue_j", "contact_type", "base_i", "base_j"]
+    rows = read_rows(output / "energy_components.csv")
+    variants = read_rows(output / "contact_variants.csv")
+    assert len(rows) == len(variants) + 1
+    assert list(rows[0]) == ["state", "variant_index", *identity, *COMPONENT_COLUMNS]
+    assert rows[0]["state"] == "reference" and int(rows[0]["variant_index"]) == -1
+    assert all(rows[0][column] == "" for column in identity)
+    for index, (component, variant) in enumerate(zip(rows[1:], variants, strict=True)):
+        assert component["state"] == "variant" and int(component["variant_index"]) == index
+        assert all(component[column] == variant[column] for column in identity)
+        assert float(component["E_total"]) == float(variant["E_total"])
+    for row in rows:
+        values = {column: float(row[column]) for column in COMPONENT_COLUMNS}
+        assert all(math.isfinite(value) for value in values.values())
+        assert abs(sum(values[c] for c in COMPONENT_COLUMNS[:4]) - values["E_pair"]) < 1e-8
+        assert abs(sum(values[c] for c in COMPONENT_COLUMNS[5:10]) - values["E_nonpair"]) < 1e-8
+        assert abs(values["E_pair"] + values["E_nonpair"] - values["E_total"]) < 1e-8
+    pair_rows = read_rows(output / "pairs.csv")
+    nonpair_rows = read_rows(output / "nonpair.csv")
+    for column in COMPONENT_COLUMNS[:5]:
+        assert abs(float(rows[0][column]) - sum(float(row[column]) for row in pair_rows)) < 1e-8
+    for column in COMPONENT_COLUMNS[5:11]:
+        assert abs(float(rows[0][column]) - sum(float(row[column]) for row in nonpair_rows)) < 1e-8
+    run = json.loads((output / "mutation_run.json").read_text())
+    assert run["energy_components_file"] == "energy_components.csv"
+    assert float(rows[0]["E_total"]) == run["native_energy"]
+
+
 def validate_case(case, expected, image, verify_full=False):
     case = case.resolve()
+    validate_components(case / "memory")
     summary = compare(read_rows(case / "memory/contact_variants.csv"), read_rows(expected))
     with tempfile.TemporaryDirectory(prefix="briq-memory-validation-") as temporary:
         work = Path(temporary)
@@ -105,6 +151,7 @@ def validate_case(case, expected, image, verify_full=False):
         if verify_full:
             run("/case/geometry.tsv", "/work/verified", ok=True, extra=("--verify-full",))
             compare(read_rows(work / "verified/contact_variants.csv"), read_rows(expected))
+            validate_components(work / "verified")
             assert json.loads((work / "verified/mutation_run.json").read_text())["verify_full"]
         summary["rejection_cases"] = len(corruptions) + 1
         summary["verify_full"] = verify_full
