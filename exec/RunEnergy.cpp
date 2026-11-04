@@ -157,6 +157,8 @@ static bool parseDouble(const char *text, double &value) {
   return end != text && *end == '\0' && isfinite(value);
 }
 
+#include "tools/ScoringCheckpoint.h"
+
 bool checkInputFile(const string &inputFile) {
   ifstream file;
   cout << "check input file: " << endl;
@@ -218,6 +220,8 @@ bool checkInputFile(const string &inputFile) {
 
 void printHelp() {
   cout << "       BRiQ_Energy --batch-total JOBS.tsv TOTALS.csv (one absolute PDB path per row)" << endl;
+  cout << "         [--engine legacy|shared|score|incremental] [--profile]"
+          " [--resume|--resume-verify] [--flush-every N]" << endl;
   cout << "       BRiQ_Energy --batch JOBS.tsv (seed 0, weights 1/1/1, PDB ownership)" << endl;
   cout << "Usage: BRiQ_Energy INPUT_FILE [--pair-energies PAIRS.csv]"
           " [--nonpair NONPAIR.csv] [--components COMPONENTS.tsv]"
@@ -357,6 +361,26 @@ static bool startOutputDirectory(const string &source, const string &directory,
   }
   return prepareEnergyInput(pdbName, preparedFile);
 }
+
+// Fast scoring is serial. Buffer verbose upstream diagnostics and display them
+// only on failure; keep progress/profile lines on stderr. This avoids thousands
+// of flushed node messages for every variant without hiding error diagnostics.
+class ScoringDiagnostics {
+    ostringstream captured;
+    streambuf* previous;
+    bool success;
+ public:
+    explicit ScoringDiagnostics(bool quiet): previous(NULL), success(false) {
+        if (quiet) previous=cout.rdbuf(captured.rdbuf());
+    }
+    void complete() {success=true;}
+    ~ScoringDiagnostics() {
+        if (previous != NULL) {
+            cout.rdbuf(previous);
+            if (!success) cerr<<captured.str();
+        }
+    }
+};
 
 static int runEnergy(int argc, char **argv, EnergyTable *sharedTables = NULL,
                      double *totalResult = NULL, BaseRotamerLib *rotamers = NULL,
@@ -504,6 +528,7 @@ static int runEnergy(int argc, char **argv, EnergyTable *sharedTables = NULL,
 
   srand(randomSeed);
 
+  ScoringDiagnostics diagnostics(scoringOnly);
   if (!checkInputFile(inputFile)) return 1;
 
   unique_ptr<EnergyTable> ownedTables;
@@ -632,8 +657,8 @@ static int runEnergy(int argc, char **argv, EnergyTable *sharedTables = NULL,
   }
   if (exportPairs)
     cerr << "pair_ownership " << (pdbOwnership ? "pdb" : "node") << endl;
-  cerr << inputFile << " " << setprecision(17) << energy << endl;
-
+  if (!scoringOnly) cerr << inputFile << " " << setprecision(17) << energy << endl;
+  diagnostics.complete();
   return 0;
 }
 
@@ -877,15 +902,30 @@ static string csvQuoted(const string &value) {
 }
 
 static int runBatchTotal(int argc, char **argv) {
-  string engine = "score";
+  string engine = "incremental";
   bool profiling = false;
+  bool resume = false, verifyExisting = false;
+  size_t flushEvery=16;
   if (argc < 4) {
-    cerr << "Usage: BRiQ_Energy --batch-total JOBS.tsv TOTALS.csv [--engine legacy|shared] [--profile]" << endl;
+    cerr << "Usage: BRiQ_Energy --batch-total JOBS.tsv TOTALS.csv [--engine legacy|shared|score|incremental] [--profile] [--resume|--resume-verify] [--flush-every N]" << endl;
     return 1;
   }
   for (int arg = 4; arg < argc; ++arg) {
     string option(argv[arg]);
     if (option == "--profile") profiling = true;
+    else if (option == "--resume") resume = true;
+    else if (option == "--resume-verify") {resume=true;verifyExisting=true;}
+    else if (option == "--flush-every" && arg+1 < argc) {
+      string value(argv[++arg]);
+      if (value.empty() || value.find_first_not_of("0123456789")!=string::npos) {
+        cerr<<"--flush-every requires an integer in 1..1024"<<endl;return 1;
+      }
+      char *end=NULL;errno=0;unsigned long parsed=strtoul(value.c_str(),&end,10);
+      if (errno || *end || parsed<1 || parsed>1024) {
+        cerr<<"--flush-every requires an integer in 1..1024"<<endl;return 1;
+      }
+      flushEvery=parsed;
+    }
     else if (option == "--engine" && arg+1 < argc) engine = argv[++arg];
     else { cerr << "Unknown batch-total option: " << option << endl; return 1; }
   }
@@ -900,25 +940,63 @@ static int runBatchTotal(int argc, char **argv) {
     cerr << "Totals output must be an absolute container path" << endl;
     return 1;
   }
-  // Exclusive creation also protects inputs, manifests and dangling symlinks.
-  int descriptor = open(output.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
-  if (descriptor < 0) {
-    cerr << "Cannot create totals CSV (parent must exist; output must not exist): "
-         << output << endl;
+  const string checkpointPath=output+".state";
+  const string identity=checkpointText(jobs,engine);
+  vector<double> completed;
+  struct stat outputInfo;
+  const bool exists=lstat(output.c_str(),&outputInfo)==0;
+  if (exists && (!resume || !S_ISREG(outputInfo.st_mode))) {
+    cerr << "Totals CSV exists; use --resume for a verified regular checkpoint" << endl;
     return 1;
   }
-  FILE *opened = fdopen(descriptor, "w");
-  if (opened == NULL) {
-    close(descriptor);
-    cerr << "Cannot open totals CSV stream" << endl;
+  bool needsCheckpoint=true;
+  size_t committedPrefix=0;
+  vector<uint64_t> existingHashes;
+  uint64_t csvHash=14695981039346656037ULL;
+  struct stat checkpointInfo;
+  if (!exists && lstat(checkpointPath.c_str(),&checkpointInfo)==0) {
+    cerr << "Checkpoint exists without its totals CSV; choose a new output" << endl;
     return 1;
   }
-  unique_ptr<FILE, int (*)(FILE *)> totals(opened, fclose);
-  if (fputs("job_index,input_pdb,E_total\n", totals.get()) < 0 ||
-      fflush(totals.get()) != 0) {
-    cerr << "Cannot write totals CSV header" << endl;
+  if (exists) {
+    completed=readCompletedTotals(output,jobs);
+    existingHashes=csvPrefixHashes(output);
+    csvHash=existingHashes.back();
+    ifstream state(checkpointPath.c_str());
+    if (state) {
+      ostringstream content;content<<state.rdbuf();
+      committedPrefix=verifiedCheckpointPrefix(content.str(),identity,existingHashes);
+      needsCheckpoint=false;
+      verifyExisting=committedPrefix<completed.size();
+    } else if (!verifyExisting) {
+      cerr << "Legacy CSV has no checkpoint; use --resume-verify to recompute and verify its prefix" << endl;
+      return 1;
+    }
+  }
+  // Do not modify legacy data or create a sidecar until verification succeeds.
+  int descriptor=open(output.c_str(),exists ? O_WRONLY|O_APPEND : O_WRONLY|O_CREAT|O_EXCL,0644);
+  if (descriptor<0) {
+    cerr << "Cannot create totals CSV (parent must exist; output must not exist): " << output << endl;
     return 1;
   }
+  FILE *opened=fdopen(descriptor,exists ? "a" : "w");
+  if (opened==NULL) {close(descriptor);return 1;}
+  vector<char> csvBuffer(65536);
+  unique_ptr<FILE,int (*)(FILE*)> totals(opened,fclose);
+  if (setvbuf(totals.get(),csvBuffer.data(),_IOFBF,csvBuffer.size())!=0) return 1;
+  if (!exists) {
+    createCheckpoint(checkpointPath,identity);
+    needsCheckpoint=false;
+    const string header="job_index,input_pdb,E_total\n";
+    if (fputs(header.c_str(),totals.get())<0 || fflush(totals.get())!=0) return 1;
+    csvHash=csvHashUpdate(csvHash,header);
+    recordCheckpoint(checkpointPath,0,csvHash);
+  }
+  if (exists && committedPrefix==jobs.size()) {
+    cerr << "[resume] All jobs already verified by checkpoint" << endl;
+    return 0;
+  }
+  cerr << "[resume] completed="<<completed.size()<<" verify-prefix="<<verifyExisting<<endl;
   cerr << "[batch-total] source_version=" << BRIQ_SOURCE_VERSION
        << " seed=0 weights=1,1,1" << endl;
   srand(0);
@@ -932,7 +1010,8 @@ static int runBatchTotal(int argc, char **argv) {
   cerr << "[profile-resources] engine=" << engine << " seconds="
        << chrono::duration<double>(chrono::steady_clock::now()-resourceStart).count() << endl;
   IncrementalEnergy incremental;
-  for (size_t index = 0; index < jobs.size(); ++index) {
+  const size_t startIndex=committedPrefix;
+  for (size_t index = startIndex; index < jobs.size(); ++index) {
     cerr << "[batch-total " << index + 1 << "/" << jobs.size() << "] "
          << jobs[index] << endl;
     const auto preparationStart = chrono::steady_clock::now();
@@ -967,12 +1046,34 @@ static int runBatchTotal(int argc, char **argv) {
       cerr << "Batch-total stopped at job " << index << endl;
       return status != 0 ? status : 1;
     }
+    if (index<completed.size()) {
+      if (fabs(energy-completed[index])>1e-9) {
+        cerr << "Existing energy mismatch at job "<<index<<": "<<setprecision(17)
+             <<completed[index]<<" vs "<<energy<<"; no new rows appended"<<endl;
+        return 1;
+      }
+      if (index+1==completed.size() && needsCheckpoint) {
+        createCheckpoint(checkpointPath,identity);
+        needsCheckpoint=false;
+      }
+      if (index+1==completed.size()) recordCheckpoint(checkpointPath,completed.size(),csvHash);
+      continue;
+    }
+    if (needsCheckpoint) {createCheckpoint(checkpointPath,identity);needsCheckpoint=false;}
     string quoted = csvQuoted(jobs[index]);
-    if (fprintf(totals.get(), "%zu,%s,%.17g\n", index, quoted.c_str(), energy) < 0 ||
-        fflush(totals.get()) != 0) {
+    ostringstream row;
+    row << index << "," << quoted << "," << setprecision(17) << energy << "\n";
+    string text=row.str();
+    if (fwrite(text.data(),1,text.size(),totals.get())!=text.size()) {
       cerr << "Failed while writing totals CSV" << endl;
       return 1;
     }
+    csvHash=csvHashUpdate(csvHash,text);
+    if ((index+1)%flushEvery==0 || index+1==jobs.size()) {
+      if (fflush(totals.get())!=0) {cerr<<"Cannot flush totals CSV"<<endl;return 1;}
+      recordCheckpoint(checkpointPath,index+1,csvHash);
+    }
+
   }
   if (fclose(totals.release()) != 0) {
     cerr << "Failed while closing totals CSV" << endl;

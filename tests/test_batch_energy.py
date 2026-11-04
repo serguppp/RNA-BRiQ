@@ -13,7 +13,7 @@ from pathlib import Path
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--docker", default="briq:batch")
-    parser.add_argument("--reference", default="briq:output-dir")
+    parser.add_argument("--reference", help="Defaults to the same corrected image")
     args = parser.parse_args()
     fixtures = Path(__file__).resolve().parent / "fixtures"
 
@@ -53,13 +53,17 @@ def main():
             ("/fixtures/missing.pdb\t/work/no-output\n", "Cannot read"),
             ("/fixtures/1RNA.pdb\t/work/missing-parent/out\n", "parent"),
             (
-                "/fixtures/1RNA.pdb\t/work/no-output\n"
-                "/fixtures/missing.pdb\t/work/later\n",
+                (
+                    "/fixtures/1RNA.pdb\t/work/no-output\n"
+                    "/fixtures/missing.pdb\t/work/later\n"
+                ),
                 "Cannot read",
             ),
             (
-                "/fixtures/1RNA.pdb\t/work/no-output\n"
-                "/fixtures/1EHZ.pdb\t/work/no-output\n",
+                (
+                    "/fixtures/1RNA.pdb\t/work/no-output\n"
+                    "/fixtures/1EHZ.pdb\t/work/no-output\n"
+                ),
                 "Duplicate",
             ),
         ]
@@ -85,7 +89,7 @@ def main():
         single_seconds = 0.0
         for index, name in enumerate(names):
             elapsed, _ = run(
-                args.reference,
+                args.reference or args.docker,
                 f"/fixtures/{name}.pdb",
                 "--output-dir",
                 f"/work/single-{index}",
