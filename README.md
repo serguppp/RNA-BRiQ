@@ -322,3 +322,20 @@ The 64-variant measurement in `docs/performance-stage2.json` took 37.761 s,
 including 27.772 s of resource initialization. The 16 overlapping legacy cases
 matched exactly. Mean per-job preparation/tree/energy costs were about 0.032 s
 for 1RNA and 0.137 s for 1EHZ under the observed machine load.
+
+`--engine incremental` reuses individual interaction terms only when all relevant
+node coordinates, base identity, connectivity, frame matrices and separation
+indices are numerically identical. Every changed node invalidates its interactions
+with the entire environment, including directed and neighboring phosphate terms.
+It returns the same full total energy, with the original accumulation order.
+No distance tolerance or local-contact approximation is introduced.
+
+Both `score` and `incremental` use fast preparation without repeated secondary
+structure annotation. Valid residues and physical/chain breaks are retained;
+secondary structure only controls sampling and is irrelevant to equal-weight
+scoring. Detailed native contact discovery continues to use the full exporter.
+
+All 64 test variants matched previous preparation and incremental/full scoring
+within `1e-9` (observed difference zero). Under the measured load, fast preparation
+plus incremental scoring averaged 0.014 s/job for 1RNA and 0.024 s/job for 1EHZ;
+resource loading was about 29 s. See `docs/performance-stage3.json`.

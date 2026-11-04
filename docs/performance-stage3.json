@@ -1,0 +1,48 @@
+{
+  "score": {
+    "wall_seconds": 42.025421100028325,
+    "resources_s": 35.1503,
+    "max_energy_difference": 0.0,
+    "molecules": {
+      "1RNA": {
+        "prepare_s": 0.0087498054375,
+        "rotamers_s": 3.709375e-08,
+        "fragments_s": 1.326875e-07,
+        "tree_s": 0.00670281040625,
+        "energy_s": 0.0036424885937500003,
+        "mean_job_s": 0.01909527421875
+      },
+      "1EHZ": {
+        "prepare_s": 0.014644596125,
+        "rotamers_s": 4.009375e-08,
+        "fragments_s": 1.3646875e-07,
+        "tree_s": 0.0120737776875,
+        "energy_s": 0.0076202349999999995,
+        "mean_job_s": 0.034338785375
+      }
+    }
+  },
+  "incremental": {
+    "wall_seconds": 34.47357779997401,
+    "resources_s": 28.912,
+    "max_energy_difference": 0.0,
+    "molecules": {
+      "1RNA": {
+        "prepare_s": 0.00650919815625,
+        "rotamers_s": 4.503125e-08,
+        "fragments_s": 1.5075e-07,
+        "tree_s": 0.00673281125,
+        "energy_s": 0.00070855171875,
+        "mean_job_s": 0.01395075690625
+      },
+      "1EHZ": {
+        "prepare_s": 0.00995953534375,
+        "rotamers_s": 3.6937499999999996e-08,
+        "fragments_s": 1.265e-07,
+        "tree_s": 0.0122697855,
+        "energy_s": 0.00128373209375,
+        "mean_job_s": 0.023513216375
+      }
+    }
+  }
+}

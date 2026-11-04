@@ -6,6 +6,7 @@
  */
 
 #include "pred/BRFoldingTree.h"
+#include "pred/IncrementalEnergy.h"
 #include "model/AssignRNASS.h"
 #include "model/ProteinRep.h"
 #include <fstream>
@@ -277,6 +278,35 @@ bool prepareEnergyInput(const string &pdbFile, const string &outputFile) {
   return output.good();
 }
 
+// For fixed equal-weight scoring, secondary-structure/sampling annotations do
+// not affect the score. Preserve exactly the same valid residues and breaks.
+static bool prepareScoringInput(const string& pdbPath, const string& outputPath) {
+    RNAPDB pdb(pdbPath, "xxxx");
+    RnaAtomLib atomLibrary;
+    vector<RNABase*> bases=pdb.getValidBaseList(&atomLibrary);
+    if (bases.empty() || bases.size()!=pdb.getBaseList().size()) {
+        cerr << "Fast scoring requires a nonempty, valid RNA input" << endl;
+        return false;
+    }
+    string sequence;
+    for (size_t i=0;i<bases.size();++i) sequence+=bases[i]->baseType;
+    ofstream output(outputPath.c_str());
+    output << "pdb " << pdbPath << "\nseq " << sequence
+           << "\nsec " << string(bases.size(),'.')
+           << "\nnwc " << string(bases.size(),'.') << "\n";
+    vector<size_t> breaks;
+    for (size_t i=0;i+1<bases.size();++i)
+        if (bases[i]->chainID!=bases[i+1]->chainID ||
+            !bases[i]->connectToNeighbor(*bases[i+1])) breaks.push_back(i);
+    if (!breaks.empty()) {
+        output << "break";
+        for (size_t i=0;i<breaks.size();++i) output << " " << breaks[i];
+        output << "\n";
+    }
+    output.close();
+    return output.good();
+}
+
 static bool startOutputDirectory(const string &source, const string &directory,
                                  string &preparedFile) {
   size_t separator = source.find_last_of("/\\");
@@ -331,7 +361,7 @@ static bool startOutputDirectory(const string &source, const string &directory,
 static int runEnergy(int argc, char **argv, EnergyTable *sharedTables = NULL,
                      double *totalResult = NULL, BaseRotamerLib *rotamers = NULL,
                      FragmentLibrary *fragments = NULL, ScoringProfile *profile = NULL,
-                     bool scoringOnly = false) {
+                     bool scoringOnly = false, IncrementalEnergy *incremental = NULL) {
   if (argc > 1 && string(argv[1]) == "--prepare") {
     if (argc != 4) {
       printHelp();
@@ -560,6 +590,8 @@ static int runEnergy(int argc, char **argv, EnergyTable *sharedTables = NULL,
   } else if (components.is_open()) {
     energy = ft->totalEnergy(breakWeight, connectWeight, clashWeight, 0.0,
                              false, &components);
+  } else if (incremental != NULL) {
+    energy = incremental->score(*ft);
   } else {
     energy = ft->totalEnergy(breakWeight, connectWeight, clashWeight, 0.0,
                              false);
@@ -857,8 +889,8 @@ static int runBatchTotal(int argc, char **argv) {
     else if (option == "--engine" && arg+1 < argc) engine = argv[++arg];
     else { cerr << "Unknown batch-total option: " << option << endl; return 1; }
   }
-  if (engine != "legacy" && engine != "shared" && engine != "score") {
-    cerr << "Engine must be legacy, shared or score" << endl;
+  if (engine != "legacy" && engine != "shared" && engine != "score" && engine != "incremental") {
+    cerr << "Engine must be legacy, shared, score or incremental" << endl;
     return 1;
   }
   vector<string> jobs;
@@ -899,14 +931,17 @@ static int runBatchTotal(int argc, char **argv) {
   if (engine == "shared") sharedFragments.reset(new FragmentLibrary(sharedRotamers.get()));
   cerr << "[profile-resources] engine=" << engine << " seconds="
        << chrono::duration<double>(chrono::steady_clock::now()-resourceStart).count() << endl;
+  IncrementalEnergy incremental;
   for (size_t index = 0; index < jobs.size(); ++index) {
     cerr << "[batch-total " << index + 1 << "/" << jobs.size() << "] "
          << jobs[index] << endl;
     const auto preparationStart = chrono::steady_clock::now();
     ScoringProfile profile;
     TotalScratch scratch;
+    const bool light = engine=="score" || engine=="incremental";
     if (symlink(jobs[index].c_str(), scratch.pdb.c_str()) != 0 ||
-        !prepareEnergyInput(scratch.pdb, scratch.prepared)) {
+        !(light ? prepareScoringInput(scratch.pdb,scratch.prepared)
+                : prepareEnergyInput(scratch.pdb,scratch.prepared))) {
       cerr << "Cannot prepare batch-total job " << index << endl;
       return 1;
     }
@@ -920,7 +955,11 @@ static int runBatchTotal(int argc, char **argv) {
     pointers.push_back(NULL);
     double energy = numeric_limits<double>::quiet_NaN();
     int status = runEnergy(static_cast<int>(arguments.size()), pointers.data(),
-                           &tables, &energy, sharedRotamers.get(), sharedFragments.get(), &profile, engine == "score");
+                           &tables, &energy, sharedRotamers.get(), sharedFragments.get(), &profile, light,
+                           engine=="incremental" ? &incremental : NULL);
+    if (profiling && engine=="incremental") cerr << "[incremental] " << index << ","
+        << incremental.changedNodes << "," << incremental.pairEvaluations << ","
+        << incremental.directedEvaluations << endl;
     if (profiling) cerr << "[profile] " << index << "," << preparationSeconds << ","
        << profile.rotamerSeconds << "," << profile.fragmentSeconds << ","
        << profile.treeSeconds << "," << profile.scoreSeconds << endl;
