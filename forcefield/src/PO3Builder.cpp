@@ -374,11 +374,12 @@ PhophateGroupLocal PO3Builder::getPhoLocal(const LocalFrame& cs2A, XYZ* riboCoor
 		}
 	}
 
+	// Errors are stored once per level-1 cluster, not on a dihedral grid.
 	double libErr;
 	if(impType == 'A')
-		libErr = lib2ErrorA[bestDihed1*d1d2LibSize+bestDihed2];
+		libErr = lib2ErrorA.at(bestIndex1);
 	else
-		libErr = lib2ErrorB[bestDihed1*d1d2LibSize+bestDihed2];
+		libErr = lib2ErrorB.at(bestIndex1);
 
 	if(libErr < 2.5) {
 		localBestD1 = bestDihed1;
