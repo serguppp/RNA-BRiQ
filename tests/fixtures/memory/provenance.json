@@ -1,0 +1,12 @@
+{
+  "baseline_source_version": "d0a1f2b",
+  "geometry_generator": "Application MutationCache, four ModeRNA variants independently reconstructed per residue; PDB-equivalent 3-decimal coordinates",
+  "files": {
+    "1RNA.pdb": "88bef5e356ee22521d55c83ad9f6bb4842374cd30c51fe886016ca17e77560fa",
+    "1RNA.tsv": "f44dc526fa6a875a0efb343e4215198532e8569a59de3ea81342919619e98b95",
+    "1RNA_expected.csv": "3c28edc2f9011ce2093b862dd3fc3070a5f1137723df33c0ac0d36281486e2b8",
+    "1EHZ.pdb": "2422f2adc6e558d99ba6ff3f98502dfc4b71267dca647ae5d7a58dca5b55230c",
+    "1EHZ.tsv": "9948d5dd103287d6fdbcf609529f68bcd37ecdff9d4b58f45ec375f379c97e42",
+    "1EHZ_expected.csv": "aafc02e3935ee7580ed81089306c319802acedcf5ed8276a56fcd4eb851662ae"
+  }
+}

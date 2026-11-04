@@ -219,6 +219,7 @@ bool checkInputFile(const string &inputFile) {
 }
 
 void printHelp() {
+  cout << "       BRiQ_Energy --mutate-total REFERENCE.pdb GEOMETRY.tsv OUTPUT_DIR [--verify-full]" << endl;
   cout << "       BRiQ_Energy --batch-total JOBS.tsv TOTALS.csv (one absolute PDB path per row)" << endl;
   cout << "         [--engine legacy|shared|score|incremental] [--profile]"
           " [--resume|--resume-verify] [--flush-every N]" << endl;
@@ -385,7 +386,8 @@ class ScoringDiagnostics {
 static int runEnergy(int argc, char **argv, EnergyTable *sharedTables = NULL,
                      double *totalResult = NULL, BaseRotamerLib *rotamers = NULL,
                      FragmentLibrary *fragments = NULL, ScoringProfile *profile = NULL,
-                     bool scoringOnly = false, IncrementalEnergy *incremental = NULL) {
+                     bool scoringOnly = false, IncrementalEnergy *incremental = NULL,
+                     unique_ptr<BRFoldingTree> *retainedTree = NULL) {
   if (argc > 1 && string(argv[1]) == "--prepare") {
     if (argc != 4) {
       printHelp();
@@ -658,6 +660,7 @@ static int runEnergy(int argc, char **argv, EnergyTable *sharedTables = NULL,
   if (exportPairs)
     cerr << "pair_ownership " << (pdbOwnership ? "pdb" : "node") << endl;
   if (!scoringOnly) cerr << inputFile << " " << setprecision(17) << energy << endl;
+  if (retainedTree != NULL) *retainedTree = move(ownedTree);
   diagnostics.complete();
   return 0;
 }
@@ -1082,8 +1085,11 @@ static int runBatchTotal(int argc, char **argv) {
   return 0;
 }
 
+#include "MutationBatch.h"
+
 int main(int argc, char **argv) {
   try {
+    if (argc > 1 && string(argv[1]) == "--mutate-total") return runMutationTotal(argc, argv);
     if (argc > 1 && string(argv[1]) == "--batch-total") return runBatchTotal(argc, argv);
     if (argc > 1 && string(argv[1]) == "--batch") return runBatch(argc, argv);
     return runEnergy(argc, argv);

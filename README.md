@@ -307,6 +307,14 @@ Individual output flags cannot be combined with `--output-dir`.
 If `--nonpair` is omitted during pair export, its filename defaults to
 `<pair-output-path>.nonpair.csv`.
 
+## Mutational analysis without mutant PDB files
+
+Use `BRiQ_Energy --mutate-total reference.pdb geometry.tsv output` to score
+native contacts and all their 16 A/C/G/U substitutions in one process.
+The caller supplies one cache of residue geometries; BRiQ reuses its potential,
+node and phosphate calculations. It returns full molecular energies and the
+native export. See [input format, results and measured timings](docs/memory-mutations.md).
+
 ## Validation
 
 The corrected scorer fixes an invalid phosphate-library read that could make
